@@ -1,0 +1,20 @@
+{
+  "name": "@wlritchi/cc-openai-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "cc-openai-proxy": "./bin/cc-openai-proxy.js",
+    "cc-openai-proxy-auth": "./bin/cc-openai-proxy-auth.js"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.85.1",
+    "tiktoken": "1.0.22"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

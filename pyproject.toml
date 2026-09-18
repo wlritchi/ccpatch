@@ -1,0 +1,36 @@
+[project]
+name = "ccpatch"
+version = "2.1.274.post1"
+description = "Claude Code binary patches and provider compatibility layer"
+requires-python = ">=3.12,<4.0"
+dependencies = ["lief>=0.17,<1; sys_platform == 'darwin'"]
+
+[project.scripts]
+ccpatch = "ccpatch.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ccpatch"]
+
+[dependency-groups]
+dev = ["pytest>=9.0.1,<10", "pytest-mock>=3.14,<4", "ruff>=0.15.22,<0.16", "ty>=0.0.61"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.ruff.lint]
+ignore = ["E402", "E501", "C901", "S101"]
+select = ["B", "C", "C4", "E", "F", "I", "N", "S", "W", "ANN", "ASYNC", "UP", "RUF", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/ccpatch/cli.py" = ["T201"]

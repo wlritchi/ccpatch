@@ -73,6 +73,25 @@ The local bearer is stored in
 `~/Library/Application Support/cc-openai-proxy/auth-token` on macOS. The
 `cc-openai-proxy-auth` helper creates it with private permissions.
 
+### Tool call IDs
+
+The proxy encodes tool call IDs that contain characters outside `A-Z`, `a-z`,
+`0-9`, `_`, and `-`. The wire format is `ccpatch_tc1_` followed by the original
+UTF-8 ID in unpadded base64url. IDs that already start with this reserved prefix
+are encoded too. Other valid IDs are unchanged. The proxy decodes one layer on
+both tool calls and tool results before conversion to OpenAI requests.
+
+pi-ai combines the OpenAI tool call ID and Responses item ID as
+`call_id|item_id`. The encoding preserves both IDs without truncation; two
+64-character IDs produce a 184-character wire ID. It does not store account or
+routing information and does not require a persistent lookup table.
+
+Legacy unencoded IDs remain supported on input. Malformed encoding envelopes
+are left unchanged. The prefix is reserved: an old external ID that exactly
+matches a canonical envelope cannot be distinguished from an encoded ID.
+New responses escape that case. Stored sessions are not rewritten, so old
+OpenAI tool calls can still prevent a direct switch to Claude.
+
 ## Development and validation
 
 ```sh

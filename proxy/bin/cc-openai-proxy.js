@@ -21,6 +21,7 @@ const DEFAULT_MODEL = "gpt-5.6-sol";
 const DEFAULT_SONNET_MODEL = "gpt-5.6-terra";
 const DEFAULT_HAIKU_MODEL = "gpt-5.6-luna";
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
+const TOOL_ID_PREFIX = "ccpatch_tc1_";
 const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
 const RESPONSE_ITEM_OVERHEAD_TOKENS = 6;
 const IMAGE_OVERHEAD_TOKENS = 2048;
@@ -281,6 +282,23 @@ function normalizeSystemPrompt(system) {
     .join("\n\n");
 }
 
+/** @param {string} id @returns {string} */
+function encodeToolId(id) {
+  if (/^[a-zA-Z0-9_-]+$/.test(id) && !id.startsWith(TOOL_ID_PREFIX)) return id;
+  // Escape the reserved prefix too, so distinct provider IDs stay distinct.
+  return TOOL_ID_PREFIX + Buffer.from(id, "utf8").toString("base64url");
+}
+
+/** @param {string} id @returns {string} */
+function decodeToolId(id) {
+  if (!id.startsWith(TOOL_ID_PREFIX) || id === TOOL_ID_PREFIX) return id;
+  const payload = id.slice(TOOL_ID_PREFIX.length);
+  const decoded = Buffer.from(payload, "base64url").toString("utf8");
+  // Decode one canonical envelope. Preserve legacy IDs and malformed prefixes.
+  if (Buffer.from(decoded, "utf8").toString("base64url") !== payload) return id;
+  return encodeToolId(decoded) === id ? decoded : id;
+}
+
 function anthropicToContext(request) {
   const toolNames = new Map();
   const messages = [];
@@ -377,7 +395,7 @@ function pushUserMessage(messages, content, toolNames, timestamp) {
   for (const block of content) {
     if (block?.type === "tool_result") {
       flushBatch();
-      const toolCallId = String(block.tool_use_id || "");
+      const toolCallId = decodeToolId(String(block.tool_use_id || ""));
       messages.push({
         role: "toolResult",
         toolCallId,
@@ -452,7 +470,7 @@ function anthropicAssistantToPi(message, requestModel, toolNames, timestamp) {
         redacted: true,
       });
     } else if (block?.type === "tool_use") {
-      const id = String(block.id || `toolu_${randomUUID().replaceAll("-", "")}`);
+      const id = decodeToolId(String(block.id || `toolu_${randomUUID().replaceAll("-", "")}`));
       const name = String(block.name || "tool");
       toolNames.set(id, name);
       content.push({
@@ -518,7 +536,7 @@ function piContentToAnthropic(content) {
     }
     return {
       type: "tool_use",
-      id: block.id,
+      id: encodeToolId(block.id || `toolu_${randomUUID().replaceAll("-", "")}`),
       name: block.name,
       input: isPlainObject(block.arguments) ? block.arguments : {},
     };
@@ -965,7 +983,7 @@ async function streamAnthropicResponse(req, res, piStream, modelId) {
         index: event.contentIndex,
         content_block: {
           type: "tool_use",
-          id: block.id || `toolu_${randomUUID().replaceAll("-", "")}`,
+          id: encodeToolId(block.id || `toolu_${randomUUID().replaceAll("-", "")}`),
           name: block.name || "tool",
           input: {},
         },
@@ -1259,6 +1277,7 @@ export {
   piMessageToAnthropic,
   resolveModelId,
   serverErrorDiagnostic,
+  streamAnthropicResponse,
   thinkingToReasoning,
   wantsStreaming,
 };

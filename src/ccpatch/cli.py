@@ -28,6 +28,7 @@ from ccpatch.patches import (
     default_patch_sets,
     parse_version,
 )
+from ccpatch.transcripts import MigrationError, migrate_file, transcript_paths
 
 _CLAUDE_VERSION_RE = re.compile(r"\(Claude Code\)")
 
@@ -241,6 +242,38 @@ def _cmd_generate_multi_provider_helper(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_migrate_tool_ids(args: argparse.Namespace) -> int:
+    root = Path(args.projects_dir).expanduser()
+    try:
+        paths = transcript_paths(root)
+    except (OSError, MigrationError) as exc:
+        print(f"ccpatch: {exc}", file=sys.stderr)
+        return 1
+    affected = replacements = failures = 0
+    for path in paths:
+        try:
+            result = migrate_file(path, apply=args.apply)
+        except (OSError, MigrationError) as exc:
+            print(f"ccpatch: {path}: {exc}", file=sys.stderr)
+            failures += 1
+            continue
+        if result.replacements:
+            affected += 1
+            replacements += result.replacements
+            action = "updated" if args.apply else "would update"
+            print(f"{action}: {path} ({result.replacements} ID fields)")
+            if result.backup:
+                print(f"  backup: {result.backup}")
+    print(
+        f"ccpatch: {'applied' if args.apply else 'preview'}: "
+        f"{len(paths)} transcripts scanned, {affected} affected, "
+        f"{replacements} ID fields, {failures} errors"
+    )
+    if not args.apply:
+        print("No files changed. Stop Claude sessions before rerunning with --apply.")
+    return 1 if failures else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ccpatch", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -270,6 +303,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     helper.add_argument("-o", "--out", required=True, help="output .js path")
     helper.set_defaults(func=_cmd_generate_multi_provider_helper)
+
+    migration = sub.add_parser(
+        "migrate-tool-ids",
+        help="preview or back up and migrate legacy proxy tool IDs in transcripts",
+        description="Stop Claude sessions before applying. Each affected transcript "
+        "gets a private adjacent backup before replacement. Preview is the default.",
+    )
+    migration.add_argument(
+        "--projects-dir",
+        default="~/.claude/projects",
+        help="transcript root (default: ~/.claude/projects)",
+    )
+    mode = migration.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--apply", action="store_true", help="back up and replace affected transcripts"
+    )
+    mode.add_argument(
+        "--dry-run", action="store_true", help="preview only (the default)"
+    )
+    migration.set_defaults(func=_cmd_migrate_tool_ids)
 
     return parser
 

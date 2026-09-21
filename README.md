@@ -92,6 +92,54 @@ matches a canonical envelope cannot be distinguished from an encoded ID.
 New responses escape that case. Stored sessions are not rewritten, so old
 OpenAI tool calls can still prevent a direct switch to Claude.
 
+### Migrate existing transcripts
+
+Preview all transcripts under `~/.claude/projects`, including subagent transcripts:
+
+```sh
+ccpatch migrate-tool-ids
+# From this repository: uv run ccpatch migrate-tool-ids
+```
+
+Stop all Claude sessions that write to this directory, then apply the migration
+from a separate terminal:
+
+```sh
+ccpatch migrate-tool-ids --apply
+```
+
+Use `--projects-dir PATH` for another machine's copied transcript directory or a
+custom Claude configuration directory. `--dry-run` explicitly selects the default
+read-only preview. The tool does not change credentials or send transcript data
+anywhere.
+
+The migration recognizes `call_…|fc_…` and `call_…|ctc_…` IDs. It encodes tool-call
+and tool-result fields with the proxy's wire format, including repeated messages,
+embedded progress messages, and tool-reference metadata. It leaves native IDs,
+already encoded IDs, message text, tool inputs, and tool-output bodies unchanged.
+Other unknown composite formats are not migrated. Existing OpenAI sessions remain
+compatible with the updated proxy after migration.
+
+Each affected file gets an exact, private (`0600`) adjacent backup named
+`SESSION.jsonl.ccpatch-tool-ids-UNIQUE.bak` before atomic replacement. Backups are
+not scanned on subsequent runs; rerunning the migration is safe. To restore a
+file, stop its Claude session and copy the corresponding backup over the original
+`.jsonl` file. Backups contain conversation data: protect and retain them until
+you have verified the migrated sessions.
+
+Unchanged JSONL lines remain byte-for-byte identical. Changed lines are
+reserialized, with their line endings and all unrelated JSON values preserved.
+The replacement retains the file's permission mode, but not its timestamps,
+extended attributes, or other filesystem metadata. Malformed records (including
+duplicate JSON keys) cause the entire file to be left untouched. Errors are
+reported per file with a nonzero exit status; other files can still be migrated.
+Symlink files/directories are not followed, and hardlinked files are rejected.
+
+The tool checks for concurrent changes before replacement, but cannot lock out
+Claude's writers. **Do not apply it to active sessions**: a writer could append
+between that check and the replacement, or retain an open handle to the old file.
+It does not modify the messages already loaded in a running Claude process.
+
 ## Development and validation
 
 ```sh

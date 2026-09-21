@@ -2582,6 +2582,24 @@ _MULTI_PROVIDER_HELPER = (
     "throw Object.assign(Error(\"External provider countTokens response must contain "
     'numeric input_tokens"),{code:"EPROVIDERINCOMPATIBLE"});return '
     "_ccResponse?.input_tokens}"
+    # Move Moonshot tool additions to the tool list. References keep full definitions.
+    "function _ccMultiProviderMoonshotRequest(_ccRequest){if(!Array.isArray("
+    "_ccRequest.messages))return _ccRequest;let _ccTools=new Map((_ccRequest.tools??[])"
+    ".map((_ccTool)=>[_ccTool.name,_ccTool])),_ccReferences=new Set,_ccChanged=!1,"
+    "_ccMessages=[];for(let _ccMessage of _ccRequest.messages){if(!Array.isArray("
+    "_ccMessage.content)){_ccMessages.push(_ccMessage);continue}let _ccContent=[],"
+    "_ccRemoved=!1;for(let _ccBlock of _ccMessage.content){if(_ccBlock.type!=="
+    '"tool_addition"){_ccContent.push(_ccBlock);continue}_ccChanged=!0;_ccRemoved=!0;'
+    "let _ccTool=_ccBlock.tool;if(!_ccTool||typeof _ccTool.name!==\"string\"||"
+    "!_ccTool.name)throw Object.assign(Error(\"Invalid Moonshot tool addition\"),"
+    '{code:"EPROVIDERINCOMPATIBLE"});if(_ccTool.type==="tool_reference")'
+    "_ccReferences.add(_ccTool.name);else _ccTools.set(_ccTool.name,_ccTool)}if("
+    "!_ccRemoved)_ccMessages.push(_ccMessage);else if(_ccContent.length)"
+    "_ccMessages.push({..._ccMessage,content:_ccContent})}if(!_ccChanged)return "
+    "_ccRequest;for(let _ccName of _ccReferences)if(!_ccTools.has(_ccName)||"
+    '_ccTools.get(_ccName).type==="tool_reference")throw Object.assign(Error('
+    '"Missing Moonshot tool definition: "+_ccName),{code:"EPROVIDERINCOMPATIBLE"});'
+    "return{..._ccRequest,messages:_ccMessages,tools:[..._ccTools.values()]}}"
     "function _ccMultiProviderRoute(_ccNativeClient,_ccRequest,_ccOptions={}){let "
     "_ccInfo=_ccMultiProviderModelInfo(_ccRequest.model);if(!_ccInfo)return["
     "_ccNativeClient,_ccRequest,_ccOptions];let{token:_ccToken,baseURL:_ccBaseURL}="
@@ -2602,8 +2620,10 @@ _MULTI_PROVIDER_HELPER = (
     "_ccNativeClient.timeout,fetchOptions:_ccNativeClient.fetchOptions,fetch:"
     "_ccNativeClient.fetch,client:_ccClient};_ccMultiProviderClients.set("
     "_ccInfo.provider,_ccCached)}let _ccOutbound={..._ccRequest,model:"
-    "_ccInfo.wireModel};for(let _ccField of _ccMultiProviderDeniedRequestFields)"
-    "delete _ccOutbound[_ccField];return[_ccCached.client,_ccOutbound,"
+    '_ccInfo.wireModel};if(_ccInfo.provider==="moonshot")_ccOutbound='
+    "_ccMultiProviderMoonshotRequest(_ccOutbound);for(let _ccField of "
+    "_ccMultiProviderDeniedRequestFields)delete _ccOutbound[_ccField];"
+    "return[_ccCached.client,_ccOutbound,"
     "_ccMultiProviderSafeOptions(_ccOptions)]}"
 )
 _MULTI_PROVIDER_RESUME = re.compile(

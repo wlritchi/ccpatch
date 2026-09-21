@@ -578,4 +578,114 @@ assert.ok(!missingError.message.includes("token".repeat(10)));
 assert.ok(reads.length >= 25);
 assert.ok(allText.includes("second-token"));
 
+const deepFreeze = (value) => {
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+};
+const initialTool = {
+  name: "mcp__docs__batch",
+  description: "Create a document",
+  input_schema: { type: "object", properties: { title: { type: "string" } } },
+  defer_loading: true,
+  eager_input_streaming: true,
+};
+const addedTool = {
+  name: "mcp__docs__guide",
+  description: "Read a guide",
+  input_schema: { type: "object", properties: {} },
+};
+const updatedTool = { ...addedTool, description: "Read an updated guide" };
+const reference = (name) => ({ type: "tool_addition", tool: { type: "tool_reference", name } });
+const addition = (tool) => ({ type: "tool_addition", tool });
+const unchangedMessage = { role: "user", content: "Read the guide" };
+const textBlock = {
+  type: "text",
+  text: "Tools are available",
+  cache_control: { type: "ephemeral" },
+};
+const toolHistory = deepFreeze({
+  tools: [initialTool],
+  system: [{ type: "text", text: "Use the document tools" }],
+  messages: [
+    unchangedMessage,
+    { role: "system", content: [reference(initialTool.name), reference(initialTool.name)] },
+    { role: "system", content: [reference(addedTool.name)] },
+    { role: "system", content: [addition(addedTool), textBlock], extra: "preserve" },
+    { role: "system", content: [addition(updatedTool), reference(addedTool.name)] },
+    { role: "assistant", content: [{ type: "text", text: "Ready" }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "call_1", content: "ok" }] },
+  ],
+});
+const originalHistory = normalize(toolHistory);
+credentials.CC_KIMI_AUTH_TOKEN = "normalization-token";
+credentials.CC_MINIMAX_AUTH_TOKEN = "minimax-token";
+for (const model of [
+  "moonshot:kimi-k3",
+  "moonshot:kimi-k2.7-code",
+  "kimi:kimi-k3",
+  "kimi:kimi-k2.7-code",
+]) {
+  const input = deepFreeze({ ...toolHistory, model });
+  const [client, outbound] = api.route(nativeClient, input);
+  assert.deepEqual(normalize(outbound.tools), [initialTool, updatedTool]);
+  assert.equal(outbound.tools[0], initialTool, "references must not replace full definitions");
+  assert.equal(outbound.tools[1], updatedTool, "the last full addition wins");
+  assert.deepEqual(normalize(outbound.messages), [
+    unchangedMessage,
+    { role: "system", content: [textBlock], extra: "preserve" },
+    toolHistory.messages[5],
+    toolHistory.messages[6],
+  ]);
+  assert.equal(outbound.messages[0], unchangedMessage);
+  assert.equal(outbound.messages[1].content[0], textBlock);
+  assert.equal(outbound.system, toolHistory.system);
+  assert.deepEqual(normalize(toolHistory), originalHistory, "the caller's history must not change");
+  const [, repeated] = api.route(nativeClient, { ...outbound, model });
+  assert.deepEqual(normalize(repeated), normalize(outbound), "normalization must be idempotent");
+  await client.beta.messages.create(outbound);
+  await client.beta.messages.countTokens(outbound);
+  assert.equal(client.calls.at(-2)[1], outbound);
+  assert.equal(client.calls.at(-1)[1], outbound);
+
+  const [, noTools] = api.route(nativeClient, deepFreeze({ model, messages: [unchangedMessage] }));
+  assert.ok(!("tools" in noTools), "requests without additions must not gain a tools field");
+  const [, addedOnly] = api.route(
+    nativeClient,
+    deepFreeze({
+      model,
+      messages: [
+        { role: "system", content: [addition(addedTool), addition(updatedTool)] },
+        unchangedMessage,
+      ],
+    }),
+  );
+  assert.deepEqual(normalize(addedOnly.tools), [updatedTool]);
+  assert.deepEqual(normalize(addedOnly.messages), [unchangedMessage]);
+  for (const block of [reference("missing_tool"), { type: "tool_addition" }]) {
+    assert.throws(
+      () =>
+        api.route(
+          nativeClient,
+          deepFreeze({ model, messages: [{ role: "system", content: [block] }] }),
+        ),
+      (error) => error.code === "EPROVIDERINCOMPATIBLE",
+      "unresolved additions must not silently lose tools",
+    );
+  }
+}
+for (const model of [
+  "claude-sonnet-4-6",
+  "zai:glm-5.3",
+  "minimax:MiniMax-M3",
+  "openai:gpt-6-astra",
+]) {
+  const input = deepFreeze({ ...toolHistory, model });
+  const [, outbound] = api.route(nativeClient, input);
+  assert.equal(outbound.messages, input.messages, model);
+  assert.equal(outbound.tools, input.tools, model);
+}
+
 console.log("multi-provider SDK routing: ok");

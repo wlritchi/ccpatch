@@ -12,7 +12,18 @@ import {
   parseUsageResponse,
   rateLimitHeaders,
 } from "../bin/codex-accounts.js";
-import { errorType, route, sessionIdFor, usageLimitError } from "../bin/cc-openai-proxy.js";
+import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import {
+  authFilePaths,
+  errorType,
+  route,
+  sessionIdFor,
+  usageLimitError,
+} from "../bin/cc-openai-proxy.js";
 
 const NOW_MS = 1_790_064_000_000; // 2026-09-22T06:40:00Z
 const NOW_S = NOW_MS / 1000;
@@ -623,5 +634,44 @@ test("sessionIdFor prefers the Claude Code session header", () => {
     assert.match(sessionIdFor({ headers: {} }), /^cc-openai-/);
   } finally {
     if (original !== undefined) process.env.CC_OPENAI_SESSION_ID = original;
+  }
+});
+
+test("authFilePaths discovers sibling auth.*.json files unless a list is explicit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "cc-openai-auth-"));
+  for (const name of [
+    "auth.json",
+    "auth.1.json",
+    "auth.work.json",
+    "auth.json.bak",
+    "auth.json.123.456.tmp",
+    "auth..json",
+    "settings.json",
+  ]) {
+    await writeFile(join(directory, name), "{}\n");
+  }
+  await mkdir(join(directory, "agent-2"));
+  await writeFile(join(directory, "agent-2", "auth.json"), "{}\n");
+  await symlink(join("agent-2", "auth.json"), join(directory, "auth.linked.json"));
+  const saved = { ...process.env };
+  try {
+    delete process.env.CC_OPENAI_AUTH_FILES;
+    delete process.env.PI_AUTH_FILE;
+    process.env.CC_OPENAI_AUTH_FILE = join(directory, "auth.json");
+    assert.deepEqual(authFilePaths(), [
+      join(directory, "auth.json"),
+      join(directory, "auth.1.json"),
+      realpathSync(join(directory, "agent-2", "auth.json")),
+      join(directory, "auth.work.json"),
+    ]);
+    process.env.CC_OPENAI_AUTH_FILE = join(directory, "missing", "auth.json");
+    assert.deepEqual(authFilePaths(), [join(directory, "missing", "auth.json")]);
+    process.env.CC_OPENAI_AUTH_FILES = `${join(directory, "auth.work.json")}:${join(directory, "auth.work.json")}`;
+    assert.deepEqual(authFilePaths(), [join(directory, "auth.work.json")]);
+  } finally {
+    for (const key of ["CC_OPENAI_AUTH_FILES", "CC_OPENAI_AUTH_FILE", "PI_AUTH_FILE"]) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
   }
 });

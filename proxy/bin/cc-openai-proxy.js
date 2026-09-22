@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
+import { readdirSync, realpathSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, delimiter, join } from "node:path";
+import { basename, delimiter, dirname, join } from "node:path";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
 
 import {
@@ -61,8 +62,8 @@ Environment:
   CC_OPENAI_OPUS_MODEL       Model for Anthropic opus and fable requests (${DEFAULT_MODEL})
   CC_OPENAI_SONNET_MODEL     Model for Anthropic sonnet requests (${DEFAULT_SONNET_MODEL})
   CC_OPENAI_HAIKU_MODEL      Model for Anthropic haiku requests (${DEFAULT_HAIKU_MODEL})
-  CC_OPENAI_AUTH_FILE        Auth file (default ~/.pi/agent/auth.json)
-  CC_OPENAI_AUTH_FILES       Several auth files (one Codex account each), separated by "${delimiter}"
+  CC_OPENAI_AUTH_FILE        Auth file (default ~/.pi/agent/auth.json); sibling auth.*.json files are added
+  CC_OPENAI_AUTH_FILES       Explicit auth files (one Codex account each), separated by "${delimiter}"
   CC_OPENAI_PLAN_CAPACITY    Relative plan capacities, e.g. "plus=1,pro=20"
   CC_OPENAI_USAGE_TTL_MS     Age before a Codex usage snapshot is refreshed (300000)
   CC_OPENAI_USAGE_HEADERS    Set to 0 to omit usage headers on successful responses
@@ -177,12 +178,38 @@ function authPath() {
   );
 }
 
+const SIBLING_AUTH_FILE = /^auth\.[^./][^/]*\.json$/;
+
+// Without an explicit list, every auth.*.json next to the primary auth file
+// is one more account. Refresh temp files (auth.json.<pid>.<ts>.tmp) and
+// backups do not match the pattern. Symlinks resolve to their targets because
+// a token refresh replaces the file by rename, which would break the link.
 function authFilePaths() {
   const listed = (process.env.CC_OPENAI_AUTH_FILES || "")
     .split(delimiter)
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return listed.length > 0 ? [...new Set(listed)] : [authPath()];
+  if (listed.length > 0) return [...new Set(listed)];
+  const primary = authPath();
+  const directory = dirname(primary);
+  let siblings = [];
+  try {
+    siblings = readdirSync(directory)
+      .filter((name) => SIBLING_AUTH_FILE.test(name))
+      .sort()
+      .map((name) => {
+        const path = join(directory, name);
+        try {
+          return realpathSync(path);
+        } catch {
+          return path;
+        }
+      });
+  } catch {
+    // A missing directory means only the primary path, which reports its
+    // own absence when credentials are read.
+  }
+  return [...new Set([primary, ...siblings])];
 }
 
 async function readAuthData(path) {

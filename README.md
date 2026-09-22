@@ -65,17 +65,21 @@ and cache settings.
 
 ### Several Codex subscriptions
 
-`CC_OPENAI_AUTH_FILES` lists several pi auth files separated by the platform path
-delimiter (`:` on Linux and macOS). Each file is one ChatGPT account. To log a
-second account in with the pi CLI, point it at another directory and run
-`/login`:
+Each pi auth file is one ChatGPT account. By default the proxy uses the primary
+auth file plus every `auth.*.json` next to it, for example
+`~/.pi/agent/auth.json` and `~/.pi/agent/auth.work.json`.
+`CC_OPENAI_AUTH_FILES` replaces that discovery with an explicit list separated
+by the platform path delimiter (`:` on Linux and macOS). To log a second account
+in with the pi CLI, point it at another directory, run `/login`, and copy or
+link the resulting file into place:
 
 ```sh
 PI_CODING_AGENT_DIR=~/.pi/agent-2 pi
+ln -s ../agent-2/auth.json ~/.pi/agent/auth.work.json
 ```
 
-Then set `CC_OPENAI_AUTH_FILES=~/.pi/agent/auth.json:~/.pi/agent-2/auth.json`
-(expanded, not literal `~`) in the proxy environment.
+The proxy persists refreshed tokens into whichever file it read, so a symlink
+keeps the pi CLI in the second directory logged in as well.
 
 The proxy reads each account's usage from the Codex usage endpoint (no quota is
 consumed) and refreshes it every `CC_OPENAI_USAGE_TTL_MS` milliseconds (default

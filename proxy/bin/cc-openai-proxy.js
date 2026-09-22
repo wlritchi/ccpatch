@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
 
 import {
@@ -12,6 +12,13 @@ import {
 } from "@earendil-works/pi-ai/api/openai-responses-shared";
 import { get_encoding as getEncoding } from "tiktoken";
 
+import {
+  classifyStreamError,
+  createAccountPool,
+  parseLimitErrorBody,
+  parsePlanCapacity,
+  rateLimitHeaders,
+} from "./codex-accounts.js";
 import { loadOrCreateProxyToken, proxyAuthDiagnostic, resolveProxyAuthPath } from "./proxy-auth.js";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -41,10 +48,9 @@ const TOKENIZER_ENCODING_BY_MODEL = Object.freeze({
   "gpt-6-astra": "o200k_base",
 });
 
-let modelsPromise;
+let accountPoolPromise;
 let o200kEncoding;
 let authProbePromise;
-let credentialWriteChain = Promise.resolve();
 const processSessionId = `cc-openai-${randomUUID()}`;
 
 function usage() {
@@ -56,6 +62,10 @@ Environment:
   CC_OPENAI_SONNET_MODEL     Model for Anthropic sonnet requests (${DEFAULT_SONNET_MODEL})
   CC_OPENAI_HAIKU_MODEL      Model for Anthropic haiku requests (${DEFAULT_HAIKU_MODEL})
   CC_OPENAI_AUTH_FILE        Auth file (default ~/.pi/agent/auth.json)
+  CC_OPENAI_AUTH_FILES       Several auth files (one Codex account each), separated by "${delimiter}"
+  CC_OPENAI_PLAN_CAPACITY    Relative plan capacities, e.g. "plus=1,pro=10"
+  CC_OPENAI_USAGE_TTL_MS     Age before a Codex usage snapshot is refreshed (300000)
+  CC_OPENAI_USAGE_HEADERS    Set to 0 to omit usage headers on successful responses
   CC_OPENAI_PROXY_AUTH_FILE  Proxy bearer file (platform default when unset)
   CC_OPENAI_TRANSPORT        pi-ai transport: auto, sse, websocket, websocket-cached
   CC_OPENAI_CACHE_RETENTION  pi-ai cache retention: short, long, none
@@ -95,19 +105,68 @@ function parseArgs(argv) {
   return config;
 }
 
-async function loadModels() {
-  // Register only openai-codex to use its generated catalog and OAuth support.
-  // This provider gets credentials from a CredentialStore, so back the store
-  // with pi's auth.json. pi-ai refreshes and persists OAuth tokens through the
-  // store's modify() operation.
-  modelsPromise ??= (async () => {
-    const { createModels } = await import("@earendil-works/pi-ai");
-    const { openaiCodexProvider } = await import("@earendil-works/pi-ai/providers/openai-codex");
-    const models = createModels({ credentials: authFileCredentialStore() });
-    models.setProvider(openaiCodexProvider());
-    return models;
+// Register only openai-codex to use its generated catalog and OAuth support.
+// This provider gets credentials from a CredentialStore, so back one store
+// with each pi auth file. pi-ai refreshes and persists OAuth tokens through
+// the store's modify() operation. One Models instance per auth file gives one
+// Codex account per file with no shared credential state.
+async function createAccountModels(path) {
+  const { createModels } = await import("@earendil-works/pi-ai");
+  const { openaiCodexProvider } = await import("@earendil-works/pi-ai/providers/openai-codex");
+  const models = createModels({ credentials: authFileCredentialStore(path) });
+  models.setProvider(openaiCodexProvider());
+  return models;
+}
+
+function logEvent(fields) {
+  process.stderr.write(`${JSON.stringify({ origin: "cc-openai-proxy", ...fields })}\n`);
+}
+
+async function loadAccountPool() {
+  accountPoolPromise ??= (async () => {
+    const paths = explicitToken() ? [authPath()] : authFilePaths();
+    const accounts = [];
+    for (const path of paths) {
+      accounts.push({
+        label: basename(path),
+        models: await createAccountModels(path),
+        readCredential: async () => toCredential((await readAuthData(path))?.[DEFAULT_PROVIDER]),
+      });
+    }
+    const ttl = Number.parseInt(process.env.CC_OPENAI_USAGE_TTL_MS || "", 10);
+    return createAccountPool({
+      accounts,
+      defaultModelId: DEFAULT_MODEL,
+      capacityTable: parsePlanCapacity(process.env.CC_OPENAI_PLAN_CAPACITY),
+      ...(Number.isInteger(ttl) && ttl >= 0 ? { usageTtlMs: ttl } : {}),
+      log: logEvent,
+    });
   })();
-  return modelsPromise;
+  return accountPoolPromise;
+}
+
+// Models facade over the pool: the catalog of the first account, and auth
+// resolution that succeeds when any account has usable credentials.
+async function loadModels() {
+  const pool = await loadAccountPool();
+  const primary = pool.primaryModels();
+  return {
+    getModel: (provider, id) => primary.getModel(provider, id),
+    getModels: (provider) => primary.getModels(provider),
+    async getAuth(model) {
+      let failure;
+      for (const account of pool.accounts) {
+        try {
+          const result = await account.models.getAuth(model);
+          if (result?.auth?.apiKey) return result;
+        } catch (error) {
+          failure = error;
+        }
+      }
+      if (failure) throw failure;
+      return undefined;
+    },
+  };
 }
 
 function authPath() {
@@ -118,13 +177,21 @@ function authPath() {
   );
 }
 
-async function readAuthData() {
+function authFilePaths() {
+  const listed = (process.env.CC_OPENAI_AUTH_FILES || "")
+    .split(delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return listed.length > 0 ? [...new Set(listed)] : [authPath()];
+}
+
+async function readAuthData(path) {
   try {
-    return JSON.parse(await readFile(authPath(), "utf8"));
+    return JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
     if (error?.code === "ENOENT") return undefined;
     throw new Error(
-      `failed to read pi auth file ${authPath()}: ${error instanceof Error ? error.message : String(error)}`,
+      `failed to read pi auth file ${path}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -167,10 +234,11 @@ function toCredential(entry) {
   return entry;
 }
 
-// CredentialStore over pi's auth.json. pi-ai runs oauth refresh inside
+// CredentialStore over one pi auth.json. pi-ai runs oauth refresh inside
 // modify(), so the rotated token is persisted for the pi CLI too. Writes are
 // serialized through a promise chain per the CredentialStore contract.
-function authFileCredentialStore() {
+function authFileCredentialStore(path) {
+  let credentialWriteChain = Promise.resolve();
   const chained = (task) => {
     const result = credentialWriteChain.then(task);
     credentialWriteChain = result.then(
@@ -185,10 +253,10 @@ function authFileCredentialStore() {
       if (providerId === DEFAULT_PROVIDER && explicitToken()) {
         return staticCredential(explicitToken());
       }
-      return toCredential((await readAuthData())?.[providerId]);
+      return toCredential((await readAuthData(path))?.[providerId]);
     },
     async list() {
-      const data = (await readAuthData()) ?? {};
+      const data = (await readAuthData(path)) ?? {};
       return Object.entries(data)
         .filter(([, entry]) => entry?.type)
         .map(([providerId, entry]) => ({ providerId, type: entry.type }));
@@ -200,38 +268,32 @@ function authFileCredentialStore() {
           await fn(staticCredential(explicitToken()));
           return staticCredential(explicitToken());
         }
-        const data = (await readAuthData()) ?? {};
+        const data = (await readAuthData(path)) ?? {};
         const current = toCredential(data[providerId]);
         const next = await fn(current);
         if (next === undefined) return current;
         data[providerId] = next;
-        await writeAuthFile(authPath(), data);
+        await writeAuthFile(path, data);
         return next;
       });
     },
     delete(providerId) {
       return chained(async () => {
-        const data = await readAuthData();
+        const data = await readAuthData(path);
         if (!data || !(providerId in data)) return;
         delete data[providerId];
-        await writeAuthFile(authPath(), data);
+        await writeAuthFile(path, data);
       });
     },
   };
 }
 
-// Resolve auth before streaming starts so a missing login or failed refresh
-// becomes a clean HTTP error instead of an SSE error event after a 200.
-// getAuth() refreshes and persists an expiring token; the second resolution
-// inside streamSimple then sees the fresh credential without another refresh.
-async function requireCodexAuth(models, model) {
-  const result = await models.getAuth(model);
-  if (!result?.auth?.apiKey) {
-    throw httpError(
-      401,
-      `missing ${DEFAULT_PROVIDER} credentials in ${authPath()}. Run pi /login for ChatGPT Plus/Pro first.`,
-    );
-  }
+function missingCredentialsError() {
+  const paths = explicitToken() ? [authPath()] : authFilePaths();
+  return httpError(
+    401,
+    `missing ${DEFAULT_PROVIDER} credentials in ${paths.join(", ")}. Run pi /login for ChatGPT Plus/Pro first.`,
+  );
 }
 
 function resolveModelId(requestedModel) {
@@ -762,8 +824,9 @@ function capabilityError(code, cause = undefined) {
   });
 }
 
-function sendJson(res, status, body) {
+function sendJson(res, status, body, headers = undefined) {
   res.writeHead(status, {
+    ...headers,
     "content-type": "application/json",
     "cache-control": "no-store",
   });
@@ -771,8 +834,10 @@ function sendJson(res, status, body) {
 }
 
 function errorType(status) {
+  if (status === 529) return "overloaded_error";
   if (status >= 500) return "api_error";
   if (status === 401 || status === 403) return "authentication_error";
+  if (status === 429) return "rate_limit_error";
   return "invalid_request_error";
 }
 
@@ -871,13 +936,18 @@ function sendError(res, error, req) {
   const status = error?.status || 500;
   const message = errorMessage(error);
   logError(status, req, error);
-  sendJson(res, status, {
-    type: "error",
-    error: {
-      type: errorType(status),
-      message,
+  sendJson(
+    res,
+    status,
+    {
+      type: "error",
+      error: {
+        type: errorType(status),
+        message,
+      },
     },
-  });
+    isPlainObject(error?.headers) ? error.headers : undefined,
+  );
 }
 
 function writeSse(res, event, data) {
@@ -889,8 +959,9 @@ function contentBlockFromPartial(event) {
   return event.partial?.content?.[event.contentIndex];
 }
 
-async function streamAnthropicResponse(req, res, piStream, modelId) {
+async function streamAnthropicResponse(req, res, piStream, modelId, headers = undefined) {
   res.writeHead(200, {
+    ...headers,
     "content-type": "text/event-stream",
     "cache-control": "no-cache, no-transform",
     connection: "keep-alive",
@@ -1037,7 +1108,23 @@ async function streamAnthropicResponse(req, res, piStream, modelId) {
   res.end();
 }
 
-function buildOptions(request, req, signal) {
+// Claude Code sends X-Claude-Code-Session-Id on every API request. The same
+// value keys the Codex prompt cache and the account binding.
+function sessionIdFor(req) {
+  const headerValue = (name) => {
+    const value = req.headers?.[name];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  return (
+    process.env.CC_OPENAI_SESSION_ID ||
+    headerValue("x-claude-code-session-id") ||
+    headerValue("x-claude-session-id") ||
+    headerValue("x-client-request-id") ||
+    processSessionId
+  );
+}
+
+function buildOptions(request, req, signal, sessionId = sessionIdFor(req), hooks = undefined) {
   const reasoning = thinkingToReasoning(request.thinking);
   return {
     maxTokens: request.max_tokens,
@@ -1046,15 +1133,106 @@ function buildOptions(request, req, signal) {
     ...(reasoning ? { reasoning } : {}),
     transport: process.env.CC_OPENAI_TRANSPORT || "auto",
     cacheRetention: process.env.CC_OPENAI_CACHE_RETENTION || "short",
-    sessionId:
-      process.env.CC_OPENAI_SESSION_ID ||
-      req.headers["x-claude-session-id"] ||
-      req.headers["x-client-request-id"] ||
-      processSessionId,
+    sessionId,
     timeoutMs: process.env.CC_OPENAI_TIMEOUT_MS
       ? Number.parseInt(process.env.CC_OPENAI_TIMEOUT_MS, 10)
       : undefined,
+    ...(hooks?.onResponse ? { onResponse: hooks.onResponse } : {}),
+    ...(hooks?.fetch ? { fetch: hooks.fetch } : {}),
   };
+}
+
+// pi-ai reports Codex failures as one message. These hooks keep the raw 429
+// body and the x-codex-* headers of the SSE request for the account pool.
+function requestHooks(pool, account) {
+  const captured = {};
+  return {
+    captured,
+    onResponse: ({ status, headers }) => {
+      if (isPlainObject(headers)) pool.observeHeaders(account, headers);
+      if (status === 429) {
+        const retryAfter = Number(headers?.["retry-after"]);
+        if (Number.isFinite(retryAfter) && retryAfter > 0)
+          captured.retryAfterMs = retryAfter * 1000;
+      }
+    },
+    fetch: async (url, init) => {
+      const response = await globalThis.fetch(url, init);
+      if (response.status === 429) {
+        const text = await response
+          .clone()
+          .text()
+          .catch(() => "");
+        captured.limit = parseLimitErrorBody(text);
+      }
+      return response;
+    },
+  };
+}
+
+function usageHeaders(pool, account) {
+  if (process.env.CC_OPENAI_USAGE_HEADERS === "0" || !account.snapshot) return {};
+  return rateLimitHeaders({
+    windows: account.snapshot.windows,
+    rejected: false,
+    nowMs: pool.now(),
+  });
+}
+
+// The 429 Claude Code understands: unified rate-limit headers with the
+// earliest reset across accounts. Transient per-minute limits get a plain 429
+// that Claude Code retries by itself.
+function usageLimitError(pool) {
+  const state = pool.exhaustedState();
+  const nowMs = pool.now();
+  if (state.resetAt === undefined && state.transientUntil !== undefined) {
+    const seconds = Math.max(1, Math.ceil((state.transientUntil - nowMs) / 1000));
+    const error = httpError(429, "OpenAI Codex rate limited the request. Retry shortly.");
+    error.headers = { "retry-after": String(seconds) };
+    return error;
+  }
+  const headers = rateLimitHeaders({
+    windows: state.windows,
+    rejected: true,
+    resetAt: state.resetAt,
+    nowMs,
+  });
+  const resetAt = Number(headers["anthropic-ratelimit-unified-reset"]);
+  const plans = state.plans.length > 0 ? ` (${state.plans.join(", ")})` : "";
+  const noun = state.accountCount === 1 ? "account" : "accounts";
+  const error = httpError(
+    429,
+    `OpenAI Codex usage limit reached on ${state.accountCount} ${noun}${plans}. Resets at ${new Date(resetAt * 1000).toISOString()}.`,
+  );
+  error.headers = headers;
+  return error;
+}
+
+async function takeFirstEvent(piStream) {
+  const iterator = piStream[Symbol.asyncIterator]();
+  const first = await iterator.next();
+  if (first.done) throw httpError(502, "upstream stream ended without events");
+  return { event: first.value, iterator };
+}
+
+async function* resumeStream(event, iterator) {
+  yield event;
+  for (;;) {
+    const next = await iterator.next();
+    if (next.done) return;
+    yield next.value;
+  }
+}
+
+async function collectMessage(events) {
+  for await (const event of events) {
+    if (event.type === "done") return event.message;
+    if (event.type === "error") {
+      const status = event.reason === "aborted" ? 499 : 502;
+      throw httpError(status, event.error?.errorMessage || "upstream error");
+    }
+  }
+  throw httpError(502, "upstream stream ended without a result");
 }
 
 function extractInboundBearer(req) {
@@ -1096,8 +1274,8 @@ async function handleModels(req, res) {
   });
 }
 
-async function assertKnownModel(modelName) {
-  const models = await loadModels();
+async function assertKnownModel(modelName, catalog = undefined) {
+  const models = catalog ?? (await loadModels());
   const modelId = resolveModelId(modelName);
   const model = models.getModel(DEFAULT_PROVIDER, modelId);
   // Unknown ids 400 here. Future option (P3): synthesize an
@@ -1126,9 +1304,12 @@ function wantsStreaming(body) {
   return body.stream === true;
 }
 
-async function handleMessages(req, res) {
+// The response head waits for the first stream event. Both Codex transports
+// fail before that event on a usage limit, so the failure can move to another
+// account or become a real 429 instead of an SSE error after a 200.
+async function handleMessages(req, res, pool) {
   const body = await readJsonBody(req);
-  const { model, modelId, models } = await assertKnownModel(body.model);
+  const { model, modelId } = await assertKnownModel(body.model, pool.primaryModels());
 
   const controller = new AbortController();
   let complete = false;
@@ -1137,22 +1318,56 @@ async function handleMessages(req, res) {
     if (!complete) controller.abort(new Error("client disconnected"));
   });
 
-  await requireCodexAuth(models, model);
-  const options = buildOptions(body, req, controller.signal);
+  const sessionId = sessionIdFor(req);
   const context = anthropicToContext(body);
+  const tried = new Set();
 
-  if (wantsStreaming(body)) {
-    await streamAnthropicResponse(req, res, models.streamSimple(model, context, options), modelId);
+  for (;;) {
+    let account;
+    try {
+      account = await pool.select({ sessionKey: sessionId, exclude: tried });
+    } catch (error) {
+      if (error?.code === "auth") throw missingCredentialsError();
+      throw error;
+    }
+    if (!account) throw usageLimitError(pool);
+    tried.add(account.index);
+
+    const hooks = requestHooks(pool, account);
+    const options = buildOptions(body, req, controller.signal, sessionId, hooks);
+    const { event, iterator } = await takeFirstEvent(
+      account.models.streamSimple(model, context, options),
+    );
+    if (event.type === "error") {
+      const message = event.error?.errorMessage || "upstream error";
+      if (event.reason === "aborted" || controller.signal.aborted) throw httpError(499, message);
+      const kind = hooks.captured.limit?.kind ?? classifyStreamError(message);
+      if (kind === "usage_limit") {
+        await pool.markLimited(account, hooks.captured.limit);
+        continue;
+      }
+      if (kind === "transient") {
+        pool.markTransient(account, hooks.captured.retryAfterMs);
+        continue;
+      }
+      throw httpError(502, message);
+    }
+
+    const headers = {
+      ...usageHeaders(pool, account),
+      "x-cc-openai-account": String(account.index),
+    };
+    const events = resumeStream(event, iterator);
+    if (wantsStreaming(body)) {
+      await streamAnthropicResponse(req, res, events, modelId, headers);
+      complete = true;
+      return;
+    }
+    const message = await collectMessage(events);
     complete = true;
+    sendJson(res, 200, piMessageToAnthropic(message, modelId), headers);
     return;
   }
-
-  const message = await models.completeSimple(model, context, options);
-  complete = true;
-  if (message.stopReason === "error") {
-    throw httpError(502, message.errorMessage || "upstream error");
-  }
-  sendJson(res, 200, piMessageToAnthropic(message, modelId));
 }
 
 async function probeOpenAiAuth(load = loadModels) {
@@ -1187,7 +1402,7 @@ async function probeOpenAiAuth(load = loadModels) {
   return authProbePromise;
 }
 
-async function route(req, res, expectedBearer, probeAuth = probeOpenAiAuth) {
+async function route(req, res, expectedBearer, probeAuth = probeOpenAiAuth, pool = undefined) {
   try {
     const url = new URL(req.url || "/", "http://localhost");
     if (req.method === "GET" && url.pathname === "/health") {
@@ -1223,7 +1438,7 @@ async function route(req, res, expectedBearer, probeAuth = probeOpenAiAuth) {
       req.method === "POST" &&
       (url.pathname === "/v1/messages" || url.pathname === "/messages")
     ) {
-      await handleMessages(req, res);
+      await handleMessages(req, res, pool ?? (await loadAccountPool()));
     } else {
       throw httpError(404, `not found: ${req.method} ${url.pathname}`);
     }
@@ -1264,11 +1479,14 @@ export {
   anthropicToolsToPi,
   assertInboundAuth,
   assertTokenizerMappings,
+  authFilePaths,
+  buildOptions,
   canonicalResponsesPayload,
   countTokensResponse,
   errorType,
   estimateInputTokens,
   extractInboundBearer,
+  handleMessages,
   logError,
   parseArgs,
   piContentToAnthropic,
@@ -1277,8 +1495,10 @@ export {
   piMessageToAnthropic,
   resolveModelId,
   serverErrorDiagnostic,
+  sessionIdFor,
   streamAnthropicResponse,
   thinkingToReasoning,
+  usageLimitError,
   wantsStreaming,
 };
 

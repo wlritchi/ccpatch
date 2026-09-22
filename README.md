@@ -83,7 +83,7 @@ consumed) and refreshes it every `CC_OPENAI_USAGE_TTL_MS` milliseconds (default
 per hour until reset: an account at 10% remaining with a reset in six hours
 weighs the same as one with half the plan capacity, 10% remaining, and a reset
 in three hours. Plan capacities are relative multipliers from a built-in table
-(`plus` 1, `prolite` 5, `pro` 10, ...); `CC_OPENAI_PLAN_CAPACITY=plus=1,pro=10`
+(`plus` 1, `prolite` 5, `pro` 20, ...); `CC_OPENAI_PLAN_CAPACITY=plus=1,pro=20`
 overrides entries. A Claude Code session stays on the account it first used
 while that account is available, which keeps the Codex prompt cache warm.
 

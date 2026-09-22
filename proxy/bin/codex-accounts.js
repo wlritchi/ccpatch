@@ -17,7 +17,7 @@ const MIN_HOURS_UNTIL_RESET = 1 / 60;
 
 // Relative subscription capacity per ChatGPT plan type. OpenAI publishes
 // message ranges rather than exact quotas, so these are order-of-magnitude
-// ratios (Pro is about ten times Plus). CC_OPENAI_PLAN_CAPACITY overrides them.
+// ratios (Pro is 20 times Plus). CC_OPENAI_PLAN_CAPACITY overrides them.
 const DEFAULT_PLAN_CAPACITY = Object.freeze({
   free: 0.25,
   plus: 1,
@@ -25,8 +25,8 @@ const DEFAULT_PLAN_CAPACITY = Object.freeze({
   business: 1,
   edu: 1,
   prolite: 5,
-  pro: 10,
-  enterprise: 10,
+  pro: 20,
+  enterprise: 20,
 });
 
 function parsePlanCapacity(spec, defaults = DEFAULT_PLAN_CAPACITY) {

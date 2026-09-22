@@ -63,7 +63,7 @@ Environment:
   CC_OPENAI_HAIKU_MODEL      Model for Anthropic haiku requests (${DEFAULT_HAIKU_MODEL})
   CC_OPENAI_AUTH_FILE        Auth file (default ~/.pi/agent/auth.json)
   CC_OPENAI_AUTH_FILES       Several auth files (one Codex account each), separated by "${delimiter}"
-  CC_OPENAI_PLAN_CAPACITY    Relative plan capacities, e.g. "plus=1,pro=10"
+  CC_OPENAI_PLAN_CAPACITY    Relative plan capacities, e.g. "plus=1,pro=20"
   CC_OPENAI_USAGE_TTL_MS     Age before a Codex usage snapshot is refreshed (300000)
   CC_OPENAI_USAGE_HEADERS    Set to 0 to omit usage headers on successful responses
   CC_OPENAI_PROXY_AUTH_FILE  Proxy bearer file (platform default when unset)

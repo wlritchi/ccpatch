@@ -88,6 +88,7 @@ vm.runInContext(
 function _ccMultiProviderSDK(){return SDK}
 globalThis.api={route:_ccMultiProviderRoute,info:_ccMultiProviderModelInfo,
  catalog:_ccMultiProviderCatalogInfo,picker:_ccMultiProviderPickerCatalog,
+ identifiers:_ccMultiProviderAnthropicIdentifiers,nativeCatalog:_ccMultiProviderAnthropicCatalog,
  allowed:_ccMultiProviderToolAllowed,provider:_ccMultiProviderModelProvider,
  preflight:_ccMultiProviderPreflight,fetch:_ccMultiProviderAnthropicFetch};`,
   context,
@@ -112,10 +113,38 @@ const native = {
 };
 const one = "anthropic1:claude-fable-5-1";
 const two = "anthropic12:claude-fable-5-1";
+const expected = ["anthropic1", "anthropic12"].flatMap((provider) =>
+  ["haiku", "sonnet", "opus", "fable"].map((alias) => provider + ":" + alias),
+);
 assert.deepEqual(
   Array.from(api.picker(), (row) => row.value),
-  [one, "anthropic1:claude-haiku-4-5-20251001", two, "anthropic12:claude-haiku-4-5-20251001"],
+  expected,
 );
+assert.deepEqual(Array.from(api.identifiers()), expected);
+assert.deepEqual(
+  Array.from(context.accountAgentSchema).filter((model) => /^anthropic[0-9]+:/.test(model)),
+  expected,
+);
+for (const model of ["sonnet", "opus", "haiku", "fable", "claude-opus-4-7", "claude-opus-5-5"]) {
+  assert.ok(context.accountAgentSchema.includes(model));
+}
+assert.equal(
+  api.picker().find((row) => row.value === "anthropic1:opus").label,
+  "Opus 5.5 (anthropic1)",
+);
+assert.equal(api.info("anthropic1:opus").wireModel, "claude-opus-5-5");
+for (const model of ["claude-opus-4-7", "claude-opus-5", "claude-fable-5", "claude-mythos-5-1"]) {
+  assert.equal(api.info("anthropic1:" + model).wireModel, model);
+  assert.equal(api.route(native, { model: "anthropic1:" + model })[1].model, model);
+}
+assert.equal(api.info("anthropic1:best").wireModel, "claude-fable-5-1");
+const sonnet = api.nativeCatalog.aliases.sonnet;
+delete api.nativeCatalog.aliases.sonnet;
+assert.deepEqual(
+  Array.from(api.identifiers()),
+  expected.filter((model) => !model.endsWith(":sonnet")),
+);
+api.nativeCatalog.aliases.sonnet = sonnet;
 assert.equal(api.info("claude-fable-5-1"), null);
 assert.equal(api.provider(one), "anthropic1");
 assert.equal(api.info("anthropic1:fable").wireModel, "claude-fable-5-1");
@@ -195,7 +224,11 @@ assert.notEqual(rotated, client);
 assert.equal(rotated.options.authToken, "rotated-secret");
 delete env.CLAUDE_CODE_OAUTH_TOKEN_1;
 assert.throws(() => api.route(native, original), { code: "EPROVIDERCREDENTIAL" });
-assert.equal(api.picker().length, 2);
+assert.equal(api.picker().length, 4);
+assert.deepEqual(
+  Array.from(api.identifiers()),
+  expected.filter((model) => model.startsWith("anthropic12:")),
+);
 assert.equal(env.CLAUDE_CODE_OAUTH_TOKEN, "primary-secret");
 assert.equal(api.route(native, { model: "claude-fable-5-1" })[0], native);
 const hanging = api.fetch(

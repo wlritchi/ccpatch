@@ -54,26 +54,16 @@ function _ccMultiProviderAnthropicPicker() {
     .sort((a, b) => a.length - b.length || a.localeCompare(b))
     .flatMap((key) => {
       const provider = "anthropic" + key.slice("CLAUDE_CODE_OAUTH_TOKEN_".length);
-      return _ccMultiProviderAnthropicCatalog.models.map((entry) => ({
-        ..._ccMultiProviderAnthropicInfo(provider + ":" + entry.provider_ids.first_party),
-        label: entry.display_name + " (" + provider + ")",
-      }));
+      return ["haiku", "sonnet", "opus", "fable"]
+        .filter((alias) => _ccMultiProviderAnthropicCatalog.aliases[alias])
+        .map((alias) => {
+          const info = _ccMultiProviderAnthropicInfo(provider + ":" + alias);
+          return { ...info, label: info.label + " (" + provider + ")" };
+        });
     });
 }
 function _ccMultiProviderAnthropicIdentifiers() {
-  const providers = new Set(
-    _ccMultiProviderAnthropicPicker().map((row) => row.value.split(":")[0]),
-  );
-  const models = _ccMultiProviderAnthropicCatalog.models.flatMap((entry) => {
-    const names = [entry.id, entry.provider_ids.first_party];
-    if (entry.context?.supports_1m_suffix || entry.context?.native_1m) {
-      names.push(...names.map((name) => name + "[1m]"));
-    }
-    return names;
-  });
-  models.push(...Object.keys(_ccMultiProviderAnthropicCatalog.aliases));
-  if (_ccMultiProviderAnthropicCatalog.best) models.push("best");
-  return [...providers].flatMap((provider) => models.map((model) => provider + ":" + model));
+  return _ccMultiProviderAnthropicPicker().map((row) => row.value);
 }
 function _ccMultiProviderAnthropicHeaders(headers) {
   const safe = {};

@@ -54,8 +54,10 @@ as `CC_OPENAI_AUTH_FILE`; do not put credentials in Nix values or the Nix store.
 ## Additional Anthropic accounts
 
 Set `CLAUDE_CODE_OAUTH_TOKEN_1`, `CLAUDE_CODE_OAUTH_TOKEN_2`, and so on to tokens
-from `claude setup-token`. Each nonblank variable adds an account-specific copy
-of the upstream Anthropic model catalog to `/model`:
+from `claude setup-token`. Each nonblank variable adds the current Haiku, Sonnet,
+Opus, and Fable aliases to `/model` and the subagent model choices. These aliases
+follow the upstream catalog's first-party defaults. Historical releases and
+Mythos are not listed, but explicit known model IDs still work:
 
 ```sh
 export CLAUDE_CODE_OAUTH_TOKEN_1='<token for the first additional account>'

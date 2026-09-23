@@ -10,8 +10,10 @@ from pathlib import Path
 import pytest
 
 from ccpatch.patches import (
+    _MULTI_PROVIDER_AGENT_MODEL,
     _MULTI_PROVIDER_HELPER,
     _MULTI_PROVIDER_SDK_TAIL,
+    _expand_multi_provider_agent_model,
     _install_anthropic_accounts,
     _replace_multi_provider_sdk_tail,
 )
@@ -32,8 +34,33 @@ _CATALOG = {
             "context": {"window": 200000, "supports_1m_suffix": True},
             "max_output_tokens": {"default": 32000, "upper": 64000},
         },
+        *[
+            {
+                "id": model,
+                "display_name": label,
+                "provider_ids": {"first_party": model},
+            }
+            for model, label in [
+                ("claude-opus-4-7", "Opus 4.7"),
+                ("claude-opus-5", "Opus 5"),
+                ("claude-opus-5-5", "Opus 5.5"),
+                ("claude-sonnet-5", "Sonnet 5"),
+                ("claude-fable-5", "Fable 5"),
+                ("claude-mythos-5-1", "Mythos 5.1"),
+            ]
+        ],
     ],
-    "aliases": {"fable": {"default": "claude-fable-5-1"}},
+    "aliases": {
+        "fable": {"default": "claude-fable-5-1"},
+        "haiku": {"default": "claude-haiku-4-5"},
+        "sonnet": {"default": "claude-sonnet-5"},
+        "opus": {
+            "default": "claude-opus-5",
+            "per_provider": {"first_party": "claude-opus-5-5"},
+        },
+        "mythos": {"default": "claude-mythos-5-1"},
+    },
+    "best": "fable",
 }
 
 
@@ -44,6 +71,27 @@ def test_numbered_anthropic_accounts(tmp_path: Path) -> None:
     helper = _MULTI_PROVIDER_HELPER.replace(
         "const _ccMultiProviderAnthropicCatalog = { models: [], aliases: {} };",
         "const _ccMultiProviderAnthropicCatalog = " + json.dumps(_CATALOG) + ";",
+    )
+    agent = _MULTI_PROVIDER_AGENT_MODEL.sub(
+        lambda match: _expand_multi_provider_agent_model(
+            match,
+            {
+                "aliases": "nativeAliases",
+                "first_party": "nativeIds",
+                "models": "nativeModels",
+                "picker": "nativePicker",
+            },
+        ),
+        'model:schema.enum(["sonnet","opus","haiku","fable"])'
+        '.optional().describe("Optional model override for this agent.")',
+    )
+    helper += (
+        '\nconst nativeAliases=["sonnet","opus","haiku","fable"];'
+        'const nativeIds=["claude-opus-4-7"];'
+        'const nativeModels=()=>({opus:"claude-opus-5-5"});'
+        'const nativePicker=()=>[{value:null},{value:"opus"},..._ccMultiProviderPickerCatalog()];'
+        'const schema={enum:values=>({values,optional(){return this},describe(){return this}})};'
+        f'globalThis.accountAgentSchema=({{{agent}}}).model.values;'
     )
     path = tmp_path / "helper.js"
     path.write_text(helper)

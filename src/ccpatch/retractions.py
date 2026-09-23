@@ -26,7 +26,7 @@ def _replace(source: str, pattern: str, replacement: str, name: str) -> str:
 
 
 def patch_retractions(source: str) -> str:
-    """Patch the verified 2.1.274 persistence and eviction paths."""
+    """Patch the verified 2.1.274 and 2.1.280 persistence and eviction paths."""
     remove = re.search(
         rf'async function (?P<remove>{_ID})\(e,n\)\{{let r=(?P<flag>{_ID})\(\)&&n!==void 0\?n:void 0;await (?P<writer>{_ID})\(\)\.removeMessageByUuid\(e,r\)\}}',
         source,
@@ -70,13 +70,13 @@ def patch_retractions(source: str) -> str:
     )
     source = _replace(
         source,
-        r'function O\(X\)\{let ye=r\.findLastIndex\(\(U\)=>U\.uuid===X\);',
-        f'function O(X){{{remove["remove"]}(X,s,r.findLast((U)=>U.uuid===X)??e.findLast((U)=>U.uuid===X),r,n);let ye=r.findLastIndex((U)=>U.uuid===X);',
+        rf'(?P<prefix>function {_ID}\((?P<uuid>{_ID})\)\{{)(?P<search>let {_ID}=r\.findLastIndex\(\((?P<row>{_ID})\)=>(?P=row)\.uuid===(?P=uuid)\);)(?=if\()',
+        rf'\g<prefix>{remove["remove"]}(\g<uuid>,s,r.findLast((_ccRow)=>_ccRow.uuid===\g<uuid>)??e.findLast((_ccRow)=>_ccRow.uuid===\g<uuid>),r,n);\g<search>',
         'SDK capture before eviction',
     )
     source = _replace(
         source,
-        rf'(i\("tengu_tombstone_persisted_removal",\{{message_type:{_ID}\(U.type\)\}}\)),{remove["remove"]}\(X,s\)',
+        rf'({_ID}\("tengu_tombstone_persisted_removal",\{{message_type:{_ID}\({_ID}.type\)\}}\)),{remove["remove"]}\({_ID},s\)',
         r'\1',
         'SDK duplicate removal',
     )
@@ -106,26 +106,26 @@ def patch_retractions(source: str) -> str:
     )
     source = _replace(
         source,
-        r'async appendEntry\(e,n=this.store.getSessionId\(\),r,s,m,h\)\{',
-        f'async appendEntry(e,n=this.store.getSessionId(),r,s,m,h){{if(e.uuid&&{_ARCHIVE}.pending(n,e.uuid))return;if(e.type==={_ARCHIVE}.recordType&&s!==void 0)return;',
+        rf'async appendEntry\(e,n=this.store.getSessionId\(\),r,s,{_ID},{_ID}\)\{{',
+        rf'\g<0>if(e.uuid&&{_ARCHIVE}.pending(n,e.uuid))return;if(e.type==={_ARCHIVE}.recordType&&s!==void 0)return;',
         'late write archive conversion',
     )
     source = _replace(
         source,
-        r'let D=await this\.store\.sessionMessages\(n,s\),B=e\.isSidechain',
-        f'let D=await this.store.sessionMessages(n,s);if(e.uuid&&{_ARCHIVE}.pending(n,e.uuid))return;let B=e.isSidechain',
+        rf'let (?P<rows>{_ID})=await this\.store\.sessionMessages\(n,s\),(?P<sidechain>{_ID})=e\.isSidechain',
+        rf'let \g<rows>=await this.store.sessionMessages(n,s);if(e.uuid&&{_ARCHIVE}.pending(n,e.uuid))return;let \g<sidechain>=e.isSidechain',
         'post-await retraction guard',
     )
     source = _replace(
         source,
-        r'switch\(G5r\[e.type\]\)\{',
-        f'if(e.uuid&&{_ARCHIVE}.pending(n,e.uuid))return;switch(G5r[e.type]){{',
+        rf'switch\({_ID}\[e.type\]\)\{{',
+        rf'if(e.uuid&&{_ARCHIVE}.pending(n,e.uuid))return;\g<0>',
         'resolved session retraction guard',
     )
     source = _replace(
         source,
-        r'var G5r=\{user:"dedup-transcript",',
-        'var G5r={"ccpatch-retracted":"always",user:"dedup-transcript",',
+        rf'var (?P<policy>{_ID})=\{{user:"dedup-transcript",',
+        r'var \g<policy>={"ccpatch-retracted":"always",user:"dedup-transcript",',
         'archive local write policy',
     )
     source = _replace(
@@ -135,7 +135,7 @@ def patch_retractions(source: str) -> str:
         'archive mirror exclusion',
     )
     resume = re.search(
-        r'if\(y\)\{if\(JV\(y\)\)y=await Ure\(y,\{onTranscriptUnreadable:\(At\)=>\{U=At\},storageV5:r.storageV5\}\);',
+        rf'if\(y\)\{{if\({_ID}\(y\)\)y=await {_ID}\(y,\{{onTranscriptUnreadable:\((?P<error>{_ID})\)=>\{{{_ID}=(?P=error)\}},storageV5:r.storageV5\}}\);',
         source,
     )
     if resume is None:

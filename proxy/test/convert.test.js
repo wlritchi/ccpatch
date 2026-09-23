@@ -68,6 +68,7 @@ test("maps Anthropic family names to OpenAI Codex defaults", () => {
   assert.equal(resolveModelId("claude-3-5-haiku-latest"), "gpt-6-luna");
   assert.equal(resolveModelId("claude-sonnet-4-5"), "gpt-5.6-terra");
   assert.equal(resolveModelId("claude-opus-4-8"), "gpt-6-sol");
+  assert.equal(resolveModelId("claude-opus-5-5"), "gpt-6-sol");
   assert.equal(resolveModelId("claude-fable-5"), "gpt-6-astra");
   assert.equal(resolveModelId("gpt-5.4"), "gpt-5.4");
 });

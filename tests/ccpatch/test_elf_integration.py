@@ -286,11 +286,11 @@ def test_patched_binary_help_initializes_on_opt_in_host() -> None:
     version_match = re.search(rb'VERSION:"2\.1\.(\d+)"', source)
     if (
         version_match is None
-        or not 174 <= int(version_match[1]) <= 274
+        or not 174 <= int(version_match[1])
         or b"providerEnvVersion:3" not in source
     ):
         pytest.fail(
-            "CCPATCH_TEST_PATCHED_BINARY must be fully patched Claude Code 2.1.174-2.1.274"
+            "CCPATCH_TEST_PATCHED_BINARY must be fully patched Claude Code 2.1.174 or newer"
         )
 
     try:

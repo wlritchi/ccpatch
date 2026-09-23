@@ -1,6 +1,6 @@
 [project]
 name = "ccpatch"
-version = "2.1.274.post1"
+version = "2.1.280.post1"
 description = "Claude Code binary patches and provider compatibility layer"
 requires-python = ">=3.12,<4.0"
 dependencies = ["lief>=0.17,<1; sys_platform == 'darwin'"]

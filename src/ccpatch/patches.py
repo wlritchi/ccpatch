@@ -626,9 +626,8 @@ _PROVIDER_ENV_MANAGER_SPAWN = re.compile(
 )
 _PROVIDER_ENV_CLAIMED_ENTRY = re.compile(
     rf'(?P<prefix>async function (?P<entry>{_ID})\((?P<claim>{_ID}),(?P<main>{_ID})\)'
-    rf'\{{.{{0,1000}}?Object\.assign\(process\.env,(?P=claim)\.env\),'
-    rf'process\.argv=.{{0,300}}?),(?P<initializers>(?P<cache>{_ID})\(\),'
-    rf'(?P<auth>{_ID})\(\),.{{0,300}}?);let\{{main:(?P<worker_main>{_ID})\}}='
+    rf'\{{.{{0,1500}}?Object\.assign\(process\.env,(?:(?P=claim)\.env|{_ID})\),'
+    rf'process\.argv=.{{0,600}}?);let\{{main:(?P<worker_main>{_ID})\}}='
     rf'await (?P=main);await (?P=worker_main)\(\)\}}'
 )
 _PROVIDER_ENV_PREACTION_START = re.compile(
@@ -676,7 +675,8 @@ _PROVIDER_ENV_STATE_SCHEMA = re.compile(
     rf'providerEnv:(?:(?P<schema>{_ID})\.record\((?P=schema)\.string\(\),'
     rf'(?P=schema)\.string\(\)\)|{_ID}\({_ID}\(\),{_ID}\(\)\))\.transform\((?:{_ID}|'
     rf'\((?P<value>{_ID})\)=>\{{let (?P<filtered>{_ID})={_ID}\((?P=value)\);'
-    rf'return (?P=filtered)&&{_ID}\((?P=filtered),{_ID}\)\}})\)\.optional\(\),'
+    rf'return (?P=filtered)&&{_ID}\((?:{_ID}\((?P=filtered),'
+    rf'"the saved job state \(state.json providerEnv\)"\)|(?P=filtered)),{_ID}\)\}})\)\.optional\(\),'
 )
 _PROVIDER_ENV_JOB_COPY = re.compile(rf'providerEnv:(?P<prior>{_ID})\?\.providerEnv,')
 _PROVIDER_ENV_SEED_STATE = re.compile(
@@ -1097,8 +1097,6 @@ def _replace_provider_claimed_entry(match: re.Match[str]) -> str:
     )
     return (
         prefix
-        + ","
-        + match.group("initializers")
         + f";let{{main:{match.group('worker_main')}}}=await {match.group('main')};"
         + _provider_final_apply("_ccProviderWorkerEnv")
         + f"await {match.group('worker_main')}()}}"
@@ -2663,7 +2661,10 @@ _MULTI_PROVIDER_HELPER = (
     "_ccNativeClient.fetch,client:_ccClient};_ccMultiProviderClients.set("
     "_ccInfo.provider,_ccCached)}let _ccOutbound={..._ccRequest,model:"
     '_ccInfo.wireModel};if(_ccInfo.provider==="moonshot")_ccOutbound='
-    "_ccMultiProviderMoonshotRequest(_ccOutbound);for(let _ccField of "
+    '_ccMultiProviderMoonshotRequest(_ccOutbound);if(Array.isArray(_ccOutbound.tools)&&'
+    '_ccOutbound.tools.some((_ccTool)=>!_ccMultiProviderToolAllowed(_ccRequest.model,_ccTool)))_ccOutbound.tools='
+    '_ccOutbound.tools.filter((_ccTool)=>_ccMultiProviderToolAllowed(_ccRequest.model,_ccTool));'
+    "for(let _ccField of "
     "_ccMultiProviderDeniedRequestFields)delete _ccOutbound[_ccField];"
     "return[_ccCached.client,_ccOutbound,"
     "_ccMultiProviderSafeOptions(_ccOptions)]}"
@@ -2899,12 +2900,10 @@ def _disable_provider_message_threads(source: str) -> str:
             "multi-provider-sdk: message threads model guard absent or ambiguous"
         )
     match = matches[0]
-    return checked_replace(
-        source,
-        match.group(0),
-        match.group(0)
-        + f'if(_ccMultiProviderModelProvider({match.group("model")})!=="anthropic")return!0;',
-        context="provider message threads",
+    return (
+        source[: match.end()]
+        + f'if(_ccMultiProviderModelProvider({match.group("model")})!=="anthropic")return!0;'
+        + source[match.end() :]
     )
 
 
@@ -2921,7 +2920,10 @@ _MULTI_PROVIDER_TOOL_SCHEMA = re.compile(
     rf'tools:(?P<all_tools>{_ID}),agents:(?P=context)\.agents,'
     rf'allowedAgentTypes:(?P=context)\.allowedAgentTypes,model:(?P<model>{_ID}),'
     rf'(?P<snapshot_fields>(?:proactivityLevel:(?P=context)\.proactivityLevel,)?'
-    rf'(?:(?:querySource:(?P=context)\.querySource,)?recordedDescription:[^;{{}}]{{1,200}},'
+    rf'(?:enginePlacement:{_ID}\((?P=tool)\)\?"deferred":"listed",)?'
+    rf'(?:(?:querySource:(?P=context)\.querySource,)?'
+    rf'(?:withoutToolDescribeHooks:(?P=context)\.withoutToolDescribeHooks,)?'
+    rf'recordedDescription:[^;{{}}]{{1,200}},'
     rf'(?:recordedEntry:[^;{{}}]{{1,200}},)?)?)'
     rf'deferLoading:(?P<deferred>{_ID})\((?P=tool)\)\}}\)\)\)(?P<delimiter>;|,)'
 )
@@ -3130,9 +3132,17 @@ def _filter_multi_provider_tool_schemas(match: re.Match[str]) -> str:
     tool = match.group("tool")
     if match.group("snapshot_fields"):
         # Keep schema indices aligned with the native tool and snapshot maps.
+        pool_filter = ""
+        if "enginePlacement:" in match.group("snapshot_fields"):
+            # Late tool additions also read the full pool in 2.1.280.
+            pool = match.group("all_tools")
+            pool_filter = (
+                f"{pool}={pool}.filter(({tool})=>_ccMultiProviderToolAllowed("
+                f"{match.group('model')},{tool})),"
+            )
         return match.group(0).replace(
             f"{tools}.map(({tool})=>",
-            f"({tools}={tools}.filter(({tool})=>_ccMultiProviderToolAllowed("
+            f"({pool_filter}{tools}={tools}.filter(({tool})=>_ccMultiProviderToolAllowed("
             f"{match.group('model')},{tool}))).map(({tool})=>",
             1,
         )
@@ -4061,7 +4071,7 @@ _COMPACT_REGISTRY = re.compile(
     rf"\.map\(\((?P<entry>{_ID})\)=>(?P=entry)\.name\)\}}"
     rf"function (?P=registry)\(\)\{{(?:let {_ID}={_ID}\(\);)?"
     rf"return\[(?={_ID},)"
-    rf"|function (?P<registered>{_ID})\(\)\{{let {_ID}={_ID}\(\);return\["
+    rf"|function (?P<registered>{_ID})\(\)\{{let {_ID}={_ID}\(\)(?:,{_ID}={_ID}\(\))*;return\["
     rf"(?={_ID},[\s\S]{{1,3000}}?\]\}}{_ID}\((?P=registered)\);)"
 )
 
@@ -4154,6 +4164,8 @@ COMPACT_SESSION = PatchSet(
 # client keeps a server verdict when one arrives and runs the local classifier
 # when none does. The request still sends the classifier context, so the proxy
 # can implement the protocol later.
+# 2.1.280 has a native fallback for missing and unsupported verdicts. Enable its
+# flag instead of changing the mode. Keep native refusal and backoff decisions.
 AUTO_MODE_LOCAL_FALLBACK = PatchSet(
     name="auto-mode-local-fallback",
     patches=(
@@ -4164,14 +4176,25 @@ AUTO_MODE_LOCAL_FALLBACK = PatchSet(
                 rf'&&!{_ID}\(\)\?"arbiterWithLocalFallback":"off";'
                 rf'if\({_ID}\(\)&&!{_ID}\(\)&&!{_ID}\(\)\)return)"arbiter"'
                 r'(;return"off"\})'
+                rf'|(?P<native_fallback>function {_ID}\(\)\{{return {_ID}\("tengu_quiet_lantern",!0\)\}})'
             ),
-            replacement=r'\1"arbiterWithLocalFallback"\2',
+            replacement=lambda match: (
+                re.sub(
+                    r'return .+\}',
+                    'return!0/* ccpatch: native arbiter fallback */}',
+                    match['native_fallback'],
+                )
+                if match['native_fallback'] is not None
+                else match[1] + '"arbiterWithLocalFallback"' + match[2]
+            ),
         ),
     ),
     verify_present=(
-        re.compile(r'\(\)\)return"arbiterWithLocalFallback";return"off"\}'),
+        re.compile(
+            r'\(\)\)return"arbiterWithLocalFallback";return"off"\}|return!0/\* ccpatch: native arbiter fallback \*/'
+        ),
     ),
-    verify_absent=(re.compile(r'return"arbiter";return"off"\}'),),
+    verify_absent=(),
     min_version=(2, 1, 274),
     requires_version=True,
 )

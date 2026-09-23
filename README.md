@@ -27,11 +27,11 @@ Darwin derivation does not validate it on a Mac.
 ## Nix integration
 
 Consumers can pin an immutable release tag, for example
-`github:wlritchi/ccpatch/v2.1.274-ccpatch.1`, once that release is published. The
+`github:wlritchi/ccpatch/v2.1.280-ccpatch.1`, once that release is published. The
 lockfile records the exact commit. A release tag versions the patcher, proxy,
 launcher, and upstream binary together. Never move an existing release tag;
 increment the `ccpatch` revision for another release of the same Claude version.
-The Python package uses the corresponding PEP 440 version `2.1.274.post1`.
+The Python package uses the corresponding PEP 440 version `2.1.280.post1`.
 
 Use `packages.${system}.default` directly, or use `lib.mkPackages pkgs` or
 `overlays.default` to build with the consumer's package set. Consumers of the
@@ -187,7 +187,7 @@ It does not modify the messages already loaded in a running Claude process.
 
 ## Retraction archives
 
-For Claude Code 2.1.274, retractions remove messages from active conversation
+For Claude Code 2.1.274 and 2.1.280, retractions remove messages from active conversation
 state as before, but retain local archive copies. The patch covers terminal
 retractions, SDK persistence eviction, and text-continuation replacement. Tool
 cancellation and fallback behavior are unchanged. This does not undo tool side
@@ -200,9 +200,10 @@ record. When the persisted and live versions differ, `livePayloadJson` also
 retains the live version. There is no top-level `uuid` or nested message object:
 upstream deletion code must not mistake an archive for the original message.
 
-Stock 2.1.274 ignores these records when loading conversation context and keeps
-them during local transcript compaction. Compatibility is version-gated; other
-Claude versions and external transcript tools have not been validated. Forks
+Stock 2.1.274 and 2.1.280 ignore these records when loading conversation context and
+keep them during local transcript compaction. Newer versions remain selected and
+fail patching if required anchors change; other Claude versions and external
+transcript tools have not been validated. Forks
 and exports that copy only recognized messages can omit archives. Session
 retention and deletion still apply to the whole file.
 

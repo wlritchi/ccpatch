@@ -197,7 +197,7 @@ assert.deepEqual(
   ["WebFetch", "Read", "mcp__docs__search"],
 );
 
-assert.equal(api.catalog.length, 14);
+assert.equal(api.catalog.length, 16);
 assert.ok(api.catalog.every(({ value }) => !value.startsWith("kimi:")));
 assert.equal(api.catalogInfo("kimi:kimi-k3"), api.catalogInfo("moonshot:kimi-k3"));
 assert.equal(api.catalogInfo("moonshot:kimi-k3").description, "Moonshot general-purpose model");
@@ -211,6 +211,8 @@ assert.equal(api.toolAllowed("kimi:kimi-k3", { name: "WebSearch" }), false);
 for (const [model, label, domain] of [
   ["openai:gpt-5.6-sol", "GPT-5.6 Sol", "openai.com"],
   ["openai:gpt-6-astra", "GPT-6 Astra", "openai.com"],
+  ["openai:gpt-6-sol", "GPT-6 Sol", "openai.com"],
+  ["openai:gpt-6-luna", "GPT-6 Luna", "openai.com"],
   ["moonshot:kimi-k3", "Kimi K3", "moonshot.ai"],
   ["zai:glm-5.3", "GLM 5.3", "z.ai"],
   ["minimax:MiniMax-M3", "MiniMax M3", "minimax.io"],
@@ -236,6 +238,8 @@ const expectedLimits = new Map([
   ["minimax:MiniMax-M3", [1048576, 512000]],
   ["minimax:MiniMax-M2.7", [204800, 131072]],
   ["openai:gpt-6-astra", [272000, 128000]],
+  ["openai:gpt-6-sol", [272000, 128000]],
+  ["openai:gpt-6-luna", [272000, 128000]],
   ["openai:gpt-5.6-sol", [272000, 128000]],
   ["openai:gpt-5.6-terra", [272000, 128000]],
   ["openai:gpt-5.6-luna", [272000, 128000]],
@@ -273,7 +277,7 @@ assert.deepEqual(
 );
 credentials.CC_KIMI_AUTH_TOKEN = "kimi-picker-token";
 credentials.CC_OPENAI_AVAILABLE = "1";
-assert.equal(api.pickerCatalog().length, 14);
+assert.equal(api.pickerCatalog().length, 16);
 delete credentials.CC_ZAI_AUTH_TOKEN;
 delete credentials.CC_MINIMAX_AUTH_TOKEN;
 delete credentials.CC_OPENAI_PROXY_AUTH_TOKEN;
@@ -476,6 +480,10 @@ for (const [model, provider] of [
   ["MiniMax-M2.7", "minimax"],
   ["openai:gpt-6-astra", "openai"],
   ["gpt-6-astra", "openai"],
+  ["openai:gpt-6-sol", "openai"],
+  ["gpt-6-sol", "openai"],
+  ["openai:gpt-6-luna", "openai"],
+  ["gpt-6-luna", "openai"],
   ["openai:gpt-5.6-sol", "openai"],
   ["gpt-5.6-sol", "openai"],
   ["openai:gpt-5.6-terra", "openai"],

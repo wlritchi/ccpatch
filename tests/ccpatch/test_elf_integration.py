@@ -569,6 +569,8 @@ def test_real_source_routes_multi_provider_sdk(
         "minimax:MiniMax-M3",
         "minimax:MiniMax-M2.7",
         "openai:gpt-6-astra",
+        "openai:gpt-6-sol",
+        "openai:gpt-6-luna",
         "openai:gpt-5.6-sol",
         "openai:gpt-5.6-terra",
         "openai:gpt-5.6-luna",

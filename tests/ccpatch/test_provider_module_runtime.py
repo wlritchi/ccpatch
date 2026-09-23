@@ -106,10 +106,15 @@ def test_provider_bootstrap_capture_claim_and_policy(
         'if(process.env.CLAUDE_CODE_PROVIDER_ENV_TRANSIENT)throw Error("transport leaked");'
         'if(!Object.isFrozen(s._ccProviderWorkerEnv))throw Error("mutable snapshot");'
         's._ccProviderWorkerEnv=s._ccProviderCaptureTransport({'
-        'CLAUDE_CODE_PROVIDER_ENV_TRANSIENT:JSON.stringify({ANTHROPIC_API_KEY:"claimed",ANTHROPIC_AUTH_TOKEN:null})});'
+        'CLAUDE_CODE_PROVIDER_ENV_TRANSIENT:JSON.stringify({ANTHROPIC_API_KEY:"claimed",ANTHROPIC_AUTH_TOKEN:null,CLAUDE_CODE_OAUTH_TOKEN_12:"claimed-account"})});'
         's._ccProviderAwaitingClaim=false;s._ccProviderInitialized=false;'
         's._ccProviderInitialize({});'
         'if(process.env.ANTHROPIC_API_KEY!=="claimed"||process.env.ANTHROPIC_AUTH_TOKEN)throw Error("claim restore");'
+        'if(process.env.CLAUDE_CODE_OAUTH_TOKEN_12!=="claimed-account"||process.env.CLAUDE_CODE_OAUTH_TOKEN_3)throw Error("numbered account restore");'
+        'const numbered=s._ccProviderFilterSettings({CLAUDE_CODE_OAUTH_TOKEN_99:"local"},"localSettings");'
+        'if(numbered.CLAUDE_CODE_OAUTH_TOKEN_99)throw Error("numbered settings leak");'
+        'let conflict=false;try{s._ccProviderValidateManaged({CLAUDE_CODE_OAUTH_TOKEN_99:"managed"},"policySettings")}catch(e){conflict=e.code==="EPROVIDERENV"}'
+        'if(!conflict)throw Error("numbered policy conflict accepted");'
         'const filtered=s._ccProviderFilterSettings({ANTHROPIC_API_KEY:"local",SECURITY:"native"},"localSettings");'
         'if(filtered.ANTHROPIC_API_KEY||filtered.SECURITY!=="native")throw Error("settings filter");'
         'let rejected=false;try{s._ccProviderValidateManaged({ANTHROPIC_API_KEY:"managed"},"policySettings")}catch(e){rejected=e.code==="EPROVIDERENV"}'
@@ -141,6 +146,7 @@ def test_provider_bootstrap_capture_claim_and_policy(
         **os.environ,
         "ANTHROPIC_API_KEY": "daemon",
         "ANTHROPIC_AUTH_TOKEN": "daemon-token",
+        "CLAUDE_CODE_OAUTH_TOKEN_3": "stale-daemon-account",
         "CLAUDE_CODE_PROVIDER_ENV_TRANSIENT": '{"ANTHROPIC_API_KEY":"requester"}',
     }
     subprocess.run(  # noqa: S603 - Execute the local ESM fixture.

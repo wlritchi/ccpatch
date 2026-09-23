@@ -51,6 +51,39 @@ preferences. Set `programs.ccpatch.proxy.enable = false` to manage the service
 separately. `programs.ccpatch.proxy.environment` accepts non-secret settings such
 as `CC_OPENAI_AUTH_FILE`; do not put credentials in Nix values or the Nix store.
 
+## Additional Anthropic accounts
+
+Set `CLAUDE_CODE_OAUTH_TOKEN_1`, `CLAUDE_CODE_OAUTH_TOKEN_2`, and so on to tokens
+from `claude setup-token`. Each nonblank variable adds an account-specific copy
+of the upstream Anthropic model catalog to `/model`:
+
+```sh
+export CLAUDE_CODE_OAUTH_TOKEN_1='<token for the first additional account>'
+export CLAUDE_CODE_OAUTH_TOKEN_2='<token for the second additional account>'
+claude --model anthropic1:claude-fable-5-1
+claude --model anthropic2:claude-sonnet-5
+```
+
+Positive numeric suffixes need not be consecutive. Leading zeroes are not
+supported. Qualified native aliases such as `anthropic1:fable` also work.
+Unprefixed Claude models continue to use the primary login. Numbered accounts
+use separate OAuth clients and send requests directly to `api.anthropic.com`,
+not through the OpenAI proxy or `ANTHROPIC_BASE_URL`.
+
+The selected account is retained in responses and resumed sessions. Background
+agents receive the numbered tokens through the authenticated transient provider
+handoff, not saved job state. Ordinary tool child processes do not inherit them.
+Missing or expired tokens do not cause fallback to the primary account or another
+numbered account. Replace expired tokens yourself; this route does not refresh
+them or rotate accounts automatically.
+
+The catalog describes models known to Claude Code, not each account's entitlements.
+The server still decides access. `/login`, `/usage`, subscription discovery, and
+other account-management features continue to describe the primary account.
+Inference requests omit primary-account metadata and credit tokens. Message
+Threads remain disabled for account-prefixed requests to avoid cross-account
+thread reuse.
+
 ## Proxy configuration
 
 The managed service listens on `127.0.0.1:17780`. The launcher starts it when

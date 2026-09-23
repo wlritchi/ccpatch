@@ -417,7 +417,8 @@ def test_background_provider_environment_transforms_complete_fixture() -> None:
     assert "out[key]=value===void 0?null:value" in patched
     assert patched.count("providerEnvVersion:3,providerEnv:SNAP()") == 2
     assert (
-        "z.record(z.enum(_ccProviderKeys()),z.union([z.string(),z.null()]))" in patched
+        "z.record(z.string().refine((_ccKey)=>_ccProviderKeys().includes(_ccKey)||/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey)),z.union([z.string(),z.null()]))"
+        in patched
     )
     assert "req.providerEnvVersion!==3||req.providerEnv===void 0" in patched
     assert "op:operation,providerEnvVersion:3,short:short" in patched
@@ -780,14 +781,18 @@ def test_background_provider_environment_new_keys_cover_full_lifecycle() -> None
     assert "Object.entries(_ccProviderEnv)" in patched
     assert "if(_ccValue!==null)env[_ccKey]=_ccValue" in patched
     assert (
-        "z.record(z.enum(_ccProviderKeys()),z.union([z.string(),z.null()]))" in patched
+        "z.record(z.string().refine((_ccKey)=>_ccProviderKeys().includes(_ccKey)||/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey)),z.union([z.string(),z.null()]))"
+        in patched
     )
 
 
 def test_background_provider_environment_strict_receiver_rejects_unknown_keys() -> None:
     schema = BACKGROUND_PROVIDER_ENV.apply(_PROVIDER_ENV_SRC)
-    assert "z.record(z.enum(_ccProviderKeys())" in schema
-    assert "z.record(z.string()" not in schema[schema.index("providerEnvVersion:") :]
+    assert (
+        "z.record(z.string().refine((_ccKey)=>_ccProviderKeys().includes(_ccKey)||"
+        in schema
+    )
+    assert "z.record(z.string()," not in schema[schema.index("providerEnvVersion:") :]
 
 
 def test_background_provider_environment_rejects_protocol_skew() -> None:
@@ -1143,7 +1148,11 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
     assert '_ccTool.name!=="WebSearch"' in patched
     assert "TOOLS.filter((TOOL)=>" in patched
     assert "apiKey:null,authToken:_ccToken,maxRetries:0" in patched
-    assert "defaultHeaders:{..._ccInfo.definition.defaultHeaders}" in patched
+    assert (
+        "_ccMultiProviderAnthropicHeaders(_ccNativeClient._options?.defaultHeaders)"
+        in patched
+    )
+    assert "{..._ccInfo.definition.defaultHeaders}" in patched
     assert '_ccMultiProviderDeniedRequestFields=["fallback_credit_token"]' in patched
     assert 'code:"EPROVIDERCREDENTIAL"' in patched
     assert "_ccMultiProviderTraceHeaders.includes(_ccName.toLowerCase())" in patched
@@ -1368,6 +1377,7 @@ def test_multi_provider_resume_preserves_default_exemption(
     script = (
         'const _ccMultiProviderCatalog=[{value:"openai:gpt-6-astra"}];'
         'const _ccMultiProviderCanonicalModel=(model)=>model;'
+        'const _ccMultiProviderAnthropicAccount=(model)=>/^anthropic[1-9][0-9]*:/.test(model);'
         f"const EXEMPT=()=>{json.dumps(exempt)},ALLOW=()=>{json.dumps(allowed)};"
         f"function resume(_){{{resume}}}"
         'console.log(JSON.stringify(resume({message:{model:"gpt-6-astra"}})));'

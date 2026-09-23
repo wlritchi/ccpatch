@@ -17,6 +17,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import NotRequired, TypedDict
 from typing import override as typing_override
 
@@ -833,7 +834,11 @@ def _provider_key_sources(source: str) -> tuple[str, ...]:
 def _provider_keys_expression(source: str) -> str:
     sources = _provider_key_sources(source)
     explicit = tuple(f'"{key}"' for key in _PROVIDER_ENV_EXPLICIT_KEYS)
-    return "[" + ",".join((*[f"...{name}" for name in sources], *explicit)) + "]"
+    return (
+        "["
+        + ",".join((*[f"...{name}" for name in sources], *explicit))
+        + ",...Object.keys(process.env).filter((_ccKey)=>/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey))]"
+    )
 
 
 def _replace_provider_snapshot(match: re.Match[str]) -> str:
@@ -865,7 +870,7 @@ def _replace_provider_snapshot(match: re.Match[str]) -> str:
         f"Array.isArray(_ccProviderEnv))throw {payload_error};"
         "let _ccAllowed=new Set(_ccProviderKeys());"
         "for(let[_ccKey,_ccValue]of Object.entries(_ccProviderEnv))"
-        "if(!_ccAllowed.has(_ccKey)||(_ccValue!==null&&"
+        "if((!_ccAllowed.has(_ccKey)&&!/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey))||(_ccValue!==null&&"
         f'typeof _ccValue!=="string"))throw {invalid_error};'
         "return _ccProviderEnv}"
         'function _ccProviderMac(_ccToken,_ccReply){return require("crypto")'
@@ -922,7 +927,7 @@ def _replace_provider_schema(match: re.Match[str]) -> str:
         )
     replacement = (
         f"providerEnvVersion:{schema}.number().optional(),"
-        f"providerEnv:{schema}.record({schema}.enum(_ccProviderKeys()),"
+        f"providerEnv:{schema}.record({schema}.string().refine((_ccKey)=>_ccProviderKeys().includes(_ccKey)||/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey)),"
         f"{schema}.union([{schema}.string(),{schema}.null()])).optional(),"
         "timeoutMs:"
     )
@@ -1907,7 +1912,12 @@ class _ProviderPatchSet(PatchSet):
         end = source.index(f"function {snapshot_name}()", start)
         code = source[start:end]
         key_end = code.index("function _ccRequireProviderEnv")
-        code = "function _ccProviderKeys(){return " + native_keys + "}" + code[key_end:]
+        code = (
+            "function _ccProviderKeys(){return "
+            + native_keys
+            + '.concat(Object.keys(process.env).filter((_ccKey)=>/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey)))}'
+            + code[key_end:]
+        )
         source = source[:start] + source[end:]
         functions = re.findall(r"function (_cc(?:Provider|RequireProvider)\w*)\(", code)
         variables = (
@@ -2096,14 +2106,14 @@ def _provider_env_207(base: PatchSet) -> PatchSet:
                 '_ccScope!=="policySettings")return;'
                 'let _ccKeys=new Set(_ccProviderKeys());'
                 'for(let[_ccKey,_ccValue]of Object.entries(_ccEnv??{}))'
-                'if(_ccKeys.has(_ccKey)&&(_ccProviderWorkerEnv[_ccKey]??null)!==_ccValue)'
+                'if((_ccKeys.has(_ccKey)||/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey))&&(_ccProviderWorkerEnv[_ccKey]??null)!==_ccValue)'
                 'throw Object.assign(Error("Background requester provider conflicts with managed policy: "'
                 '+_ccKey),{code:"EPROVIDERENV"})}'
                 'function _ccProviderFilterSettings(_ccEnv,_ccScope){'
                 'if(!_ccProviderCaptureReady||_ccProviderPtyHost||_ccProviderAwaitingClaim||_ccProviderWorkerEnv===null)return _ccEnv;'
                 'let _ccKeys=new Set(_ccProviderKeys()),_ccOut={};'
                 'for(let[_ccKey,_ccValue]of Object.entries(_ccEnv))'
-                'if(!_ccKeys.has(_ccKey)||_ccScope==="policySettings")'
+                'if((!_ccKeys.has(_ccKey)&&!/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test(_ccKey))||_ccScope==="policySettings")'
                 '_ccOut[_ccKey]=_ccValue;return _ccOut}',
             ),
             Patch(
@@ -2540,6 +2550,9 @@ _MULTI_PROVIDER_MODEL_COSTS.update(
         if model.startswith("moonshot:")
     }
 )
+_ANTHROPIC_ACCOUNT_HELPER = (
+    Path(__file__).with_name("anthropic_accounts.js").read_text()
+)
 _MULTI_PROVIDER_HELPER = (
     f"const _ccMultiProviderDefinitions={_MULTI_PROVIDER_DEFINITIONS};"
     f"const _ccMultiProviderCatalog={_MULTI_PROVIDER_CATALOG};"
@@ -2551,13 +2564,15 @@ _MULTI_PROVIDER_HELPER = (
     '&&_ccModel.startsWith("kimi:")?"moonshot:"+_ccModel.slice(5):_ccModel}'
     "function _ccMultiProviderCatalogInfo(_ccModel){if(typeof _ccModel!==\"string\")"
     "return null;_ccModel=_ccMultiProviderCanonicalModel(_ccModel);"
+    "if(_ccMultiProviderAnthropicAccount(_ccModel))return _ccMultiProviderAnthropicInfo(_ccModel);"
     "return _ccMultiProviderCatalog.find((_ccEntry)=>_ccEntry.value==="
     "_ccModel)??null}"
     "function _ccMultiProviderAttribution(_ccModel,_ccNativeLabel){let _ccEntry="
     "_ccMultiProviderCatalogInfo(_ccModel);return{label:_ccEntry?.label??_ccNativeLabel,"
     'domain:_ccEntry?.attributionDomain??"anthropic.com"}}'
     "function _ccMultiProviderModelProvider(_ccModel){if(typeof _ccModel!==\"string\")"
-    'return"anthropic";_ccModel=_ccMultiProviderCanonicalModel(_ccModel.toLowerCase());'
+    'return"anthropic";let _ccAccount=_ccMultiProviderAnthropicAccount(_ccModel);'
+    'if(_ccAccount)return _ccAccount.provider;_ccModel=_ccMultiProviderCanonicalModel(_ccModel.toLowerCase());'
     'let _ccSeparator=_ccModel.indexOf(":"),_ccPrefix='
     "_ccSeparator<0?null:_ccModel.slice(0,_ccSeparator).toLowerCase();if(_ccPrefix&&"
     "_ccMultiProviderPrefixes.includes(_ccPrefix))return _ccPrefix;let _ccKnown="
@@ -2567,7 +2582,10 @@ _MULTI_PROVIDER_HELPER = (
     "function _ccMultiProviderModelError(_ccMessage){return Object.assign(Error("
     '_ccMessage),{code:"EPROVIDERMODEL"})}'
     "function _ccMultiProviderModelInfo(_ccModel){if(typeof _ccModel!==\"string\")"
-    "return null;_ccModel=_ccMultiProviderCanonicalModel(_ccModel);"
+    "return null;if(/^anthropic[0-9]*:/i.test(_ccModel)){let _ccAccount="
+    "_ccMultiProviderAnthropicModel(_ccModel);if(!_ccAccount)throw _ccMultiProviderModelError("
+    '"Invalid numbered Anthropic provider: "+_ccModel);return _ccAccount}'
+    "_ccModel=_ccMultiProviderCanonicalModel(_ccModel);"
     "let _ccSeparator=_ccModel.indexOf(\":\"),_ccProvider="
     "_ccSeparator<0?null:_ccModel.slice(0,_ccSeparator),_ccWireModel="
     "_ccSeparator<0?_ccModel:_ccModel.slice(_ccSeparator+1),_ccKnownWire="
@@ -2587,16 +2605,16 @@ _MULTI_PROVIDER_HELPER = (
     "_ccCanonicalProvider+\":\"+_ccWireModel);return{provider:"
     "_ccCanonicalProvider,wireModel:_ccWireModel,definition:_ccDefinition}}"
     "function _ccMultiProviderAvailable(_ccProvider){let _ccDefinition="
-    "_ccMultiProviderDefinitions[_ccProvider],_ccToken=process.env["
+    "_ccMultiProviderDefinitions[_ccProvider]??_ccMultiProviderAnthropicDefinition(_ccProvider),_ccToken=process.env["
     "_ccDefinition.tokenEnv]?.trim(),_ccBaseURL=_ccDefinition.baseURLEnv?process.env["
     "_ccDefinition.baseURLEnv]?.trim():_ccDefinition.baseURL;return!!_ccToken&&"
     "!!_ccBaseURL&&(!_ccDefinition.availabilityEnv||process.env["
     '_ccDefinition.availabilityEnv]==="1")}function '
     "_ccMultiProviderPickerCatalog(){return _ccMultiProviderCatalog.filter("
     "(_ccEntry)=>_ccEntry.hidden!==!0&&_ccMultiProviderAvailable("
-    '_ccEntry.value.slice(0,_ccEntry.value.indexOf(":"))))}'
+    '_ccEntry.value.slice(0,_ccEntry.value.indexOf(":")))).concat(_ccMultiProviderAnthropicPicker())}'
     "function _ccMultiProviderToolAllowed(_ccModel,_ccTool){return _ccTool.isMcp===!0||"
-    '_ccTool.name!=="WebSearch"||_ccMultiProviderModelProvider(_ccModel)==="anthropic"}'
+    '_ccTool.name!=="WebSearch"||_ccMultiProviderModelProvider(_ccModel)==="anthropic"||!!_ccMultiProviderAnthropicAccount(_ccModel)}'
     "function _ccMultiProviderSafeFetchOptions(_ccOptions){if(!_ccOptions)return "
     "_ccOptions;let{headers:_ccHeaders,..._ccSafe}=_ccOptions;return _ccSafe}"
     "function _ccMultiProviderSafeOptions(_ccOptions){let _ccSafe={};if("
@@ -2653,9 +2671,13 @@ _MULTI_PROVIDER_HELPER = (
     "_ccBaseURL,apiKey:null,authToken:_ccToken,maxRetries:0,"
     "dangerouslyAllowBrowser:!0,timeout:_ccNativeClient.timeout,fetchOptions:"
     "_ccMultiProviderSafeFetchOptions(_ccNativeClient.fetchOptions),fetch:"
-    "_ccNativeClient.fetch,defaultHeaders:{..."
-    "_ccInfo.definition.defaultHeaders}});if(_ccClient._options)_ccClient._options={..."
-    "_ccClient._options,defaultHeaders:{..._ccInfo.definition.defaultHeaders}};"
+    "(_ccInfo.definition.oauth?_ccMultiProviderAnthropicFetch(_ccInfo.provider,_ccNativeClient._ccAccountFetch):"
+    "_ccNativeClient.fetch),defaultHeaders:(_ccInfo.definition.oauth?"
+    "_ccMultiProviderAnthropicHeaders(_ccNativeClient._options?.defaultHeaders):{..."
+    "_ccInfo.definition.defaultHeaders})});if(_ccClient._options)_ccClient._options={..."
+    "_ccClient._options,defaultHeaders:(_ccInfo.definition.oauth?"
+    "_ccMultiProviderAnthropicHeaders(_ccNativeClient._options.defaultHeaders):"
+    "{..._ccInfo.definition.defaultHeaders})};"
     "_ccCached={token:_ccToken,baseURL:_ccBaseURL,nativeClient:_ccNativeClient,timeout:"
     "_ccNativeClient.timeout,fetchOptions:_ccNativeClient.fetchOptions,fetch:"
     "_ccNativeClient.fetch,client:_ccClient};_ccMultiProviderClients.set("
@@ -2664,10 +2686,13 @@ _MULTI_PROVIDER_HELPER = (
     '_ccMultiProviderMoonshotRequest(_ccOutbound);if(Array.isArray(_ccOutbound.tools)&&'
     '_ccOutbound.tools.some((_ccTool)=>!_ccMultiProviderToolAllowed(_ccRequest.model,_ccTool)))_ccOutbound.tools='
     '_ccOutbound.tools.filter((_ccTool)=>_ccMultiProviderToolAllowed(_ccRequest.model,_ccTool));'
+    "if(_ccInfo.definition.oauth)_ccOutbound=_ccMultiProviderAnthropicRequest(_ccOutbound);"
     "for(let _ccField of "
     "_ccMultiProviderDeniedRequestFields)delete _ccOutbound[_ccField];"
     "return[_ccCached.client,_ccOutbound,"
-    "_ccMultiProviderSafeOptions(_ccOptions)]}"
+    "(_ccInfo.definition.oauth?{..._ccMultiProviderSafeOptions(_ccOptions),"
+    "headers:_ccMultiProviderAnthropicHeaders(_ccOptions.headers)}:_ccMultiProviderSafeOptions(_ccOptions))]}"
+    + _ANTHROPIC_ACCOUNT_HELPER
 )
 _MULTI_PROVIDER_RESUME = re.compile(
     rf'let (?P<model>{_ID})=(?P<message>{_ID})\.message\.model,'
@@ -2695,6 +2720,9 @@ def _restore_multi_provider_model(match: re.Match[str]) -> str:
     # Only restore bare wire IDs when the catalogue has one matching provider.
     return (
         f"let {model}={match.group('message')}.message.model;"
+        f"if(_ccMultiProviderAnthropicAccount({model})){{let _ccRestored={model};"
+        f'return {allowed}?{{kind:"ok",model:_ccRestored}}:'
+        '{kind:"declined",model:_ccRestored,reason:"not_allowed"}}'
         f"let _ccCandidates=_ccMultiProviderCatalog.filter((_ccEntry)=>"
         f"_ccEntry.value===_ccMultiProviderCanonicalModel({model})||_ccEntry.value.slice("
         f'_ccEntry.value.indexOf(":")+1)==={model});'
@@ -2743,6 +2771,7 @@ def _expand_multi_provider_agent_model(
         f"...{bindings['first_party']},...Object.values({bindings['models']}()),"
         f"...{bindings['picker']}().filter((_ccEntry)=>"
         'typeof _ccEntry.value==="string").map((_ccEntry)=>_ccEntry.value),'
+        "..._ccMultiProviderAnthropicIdentifiers(),"
         "..._ccMultiProviderCatalog.flatMap((_ccEntry)=>"
         '_ccEntry.value.startsWith("moonshot:")?[_ccEntry.value,'
         '_ccEntry.value.replace("moonshot:","kimi:")]:[_ccEntry.value])])])'
@@ -2966,6 +2995,101 @@ _MULTI_PROVIDER_COMPACTION_SOURCE = re.compile(
 )
 
 
+def _install_anthropic_accounts(source: str) -> str:
+    """Reuse the baked-in Claude catalog and bypass primary-account authentication."""
+    catalogs = list(
+        re.finditer(
+            r'var [\w$]+=(\{"//":"Hand-maintained baked-in model catalog[\s\S]+?\});',
+            source,
+        )
+    )
+    if not catalogs:
+        if "Hand-maintained baked-in model catalog" in source:
+            raise PatchError("numbered Anthropic accounts: native catalog changed")
+        return source
+    if len(catalogs) != 1:
+        raise PatchError("numbered Anthropic accounts: ambiguous native catalog")
+    source = checked_replace(
+        source,
+        "const _ccMultiProviderAnthropicCatalog = { models: [], aliases: {} };",
+        "const _ccMultiProviderAnthropicCatalog = " + catalogs[0][1] + ";",
+        context="numbered Anthropic catalog",
+    )
+    tail = re.search(
+        r'const _ccMultiProviderSDK=\(\)=>(?P<constructor>[\w$]+);', source
+    )
+    if tail is None:
+        raise PatchError("numbered Anthropic accounts: native SDK factory changed")
+    start = source.rfind("async function ", 0, tail.start())
+    head = re.match(
+        rf'async function {_ID}\(\{{(?P<args>[^{{}}]+)\}}\)\{{', source[start:]
+    )
+    if head is None:
+        raise PatchError("numbered Anthropic accounts: native SDK arguments changed")
+    args = dict(re.findall(rf'(\w+):({_ID})', head['args']))
+    if not {"model", "fetchOverride"} <= args.keys():
+        raise PatchError("numbered Anthropic accounts: native SDK arguments absent")
+    headers = re.search(
+        rf'(?P<headers>{_ID})=\{{"x-app":', source[start : tail.start()]
+    )
+    user_agent = re.search(
+        rf'"User-Agent":(?P<fn>{_ID})\(\)', source[start : tail.start()]
+    )
+    transport = re.search(
+        rf'fetchOptions:(?P<fn>{_ID})\(\{{forAnthropicAPI:!0,',
+        source[start : tail.start()],
+    )
+    if headers is None or user_agent is None or transport is None:
+        raise PatchError("numbered Anthropic accounts: native client headers changed")
+    # Use a fresh generic client before the primary account refresh or cloud login.
+    injection = (
+        f"if(_ccMultiProviderAnthropicAccount({args['model']})){{"
+        f"_ccMultiProviderPreflight({args['model']});let _ccNativeClient=new {tail['constructor']}({{"
+        'apiKey:null,authToken:null,baseURL:"https://api.anthropic.com",maxRetries:0,'
+        'dangerouslyAllowBrowser:!0,timeout:Number(process.env.API_TIMEOUT_MS)||600000,'
+        f'fetchOptions:{transport["fn"]}({{forAnthropicAPI:!1,url:"https://api.anthropic.com"}}),'
+        f'defaultHeaders:{{"x-app":"cli","User-Agent":{user_agent["fn"]}()}}}});'
+        f"_ccNativeClient._ccAccountFetch={args['fetchOverride']};return _ccNativeClient}}"
+    )
+    source = source[: start + head.end()] + injection + source[start + head.end() :]
+    identity = re.compile(
+        rf'function (?P<fn>{_ID})\((?P<model>{_ID}),(?P<opts>{_ID})\)\{{'
+        rf'(?=let {_ID}={_ID}\((?P=model),(?P=opts)\);if\((?P=opts)\?\.identity===!0)'
+    )
+    source, count = identity.subn(
+        lambda m: (
+            m[0] + f'if(_ccMultiProviderAnthropicAccount({m["model"]}))'
+            f'{m["model"]}=_ccMultiProviderAnthropicModel({m["model"]}).entry.id;'
+        ),
+        source,
+    )
+    if count != 1:
+        raise PatchError("numbered Anthropic accounts: model identity changed")
+    secrets = re.compile(
+        rf'(function {_ID}\({_ID}\)\{{let (?P<key>{_ID})={_ID}\.replace\(/\^INPUT_/,""\);return )'
+        rf'(?={_ID}\((?P=key)\)\|\|{_ID}\((?P=key)\)\|\|(?P=key)\.startsWith\("OTEL_"\))'
+    )
+    source, count = secrets.subn(
+        lambda m: m[0] + f'/^CLAUDE_CODE_OAUTH_TOKEN_[1-9][0-9]*$/.test({m["key"]})||',
+        source,
+    )
+    if count != 1:
+        raise PatchError("numbered Anthropic accounts: child secret filter changed")
+    fallback = re.compile(
+        rf'(function {_ID}\((?P<model>{_ID}),{_ID}\)\{{)(?=if\({_ID}\(\)\)return\[(?P=model)\];let {_ID}=)'
+    )
+    source, count = fallback.subn(
+        lambda m: (
+            m[0]
+            + f'if(_ccMultiProviderAnthropicAccount({m["model"]}))return[{m["model"]}];'
+        ),
+        source,
+    )
+    if count != 1:
+        raise PatchError("numbered Anthropic accounts: fallback chain changed")
+    return source
+
+
 def _replace_multi_provider_sdk_tail(match: re.Match[str]) -> str:
     return (
         match.group("prefix")
@@ -3115,7 +3239,7 @@ def _recognize_multi_provider_model(match: re.Match[str]) -> str:
     name = match.group("name")
     return (
         f"function {match.group('function')}({model}){{let _ccKnown="
-        f"_ccMultiProviderCatalog.find((_ccModel)=>_ccModel.value==={model});"
+        f"_ccMultiProviderCatalogInfo({model});"
         f"if(_ccKnown)return{{..._ccKnown}};let {name}={match.group('display')}({model});"
         f"if(!{name})return null;let {match.group('normalized')}="
         f"{match.group('normalize')}({model}),{match.group('alias')}=null;"
@@ -3664,6 +3788,7 @@ class _SDKPatchSet(PatchSet):
                         assert definition is not None and consumer is not None
         native_tail = _MULTI_PROVIDER_SDK_TAIL.search(source) if split else None
         source = super().apply(source)
+        source = _install_anthropic_accounts(source)
         source = _recognize_provider_catalog(source)
         source = _recognize_provider_window(source)
         source = _disable_provider_message_threads(source)

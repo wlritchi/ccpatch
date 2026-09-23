@@ -264,26 +264,45 @@ credentials.CC_OPENAI_PROXY_EFFECTIVE_URL = "http://127.0.0.1:17780";
 credentials.CC_OPENAI_AVAILABLE = "0";
 assert.deepEqual(
   Array.from(api.pickerCatalog(), ({ value }) => value),
-  [
-    "zai:glm-5.3",
-    "zai:glm-5.3-flash",
-    "zai:glm-5.2",
-    "zai:glm-5-turbo",
-    "zai:glm-4.7",
-    "zai:glm-4.5-air",
-    "minimax:MiniMax-M3",
-    "minimax:MiniMax-M2.7",
-  ],
+  ["zai:glm-5.3", "zai:glm-5.3-flash", "minimax:MiniMax-M3"],
 );
 credentials.CC_KIMI_AUTH_TOKEN = "kimi-picker-token";
 credentials.CC_OPENAI_AVAILABLE = "1";
-assert.equal(api.pickerCatalog().length, 16);
+// Superseded releases stay in the catalog but leave the picker. OpenAI sorts
+// above the other providers.
+assert.deepEqual(
+  Array.from(api.pickerCatalog(), ({ value }) => value),
+  [
+    "openai:gpt-6-astra",
+    "openai:gpt-6-sol",
+    "openai:gpt-6-luna",
+    "openai:gpt-5.6-terra",
+    "moonshot:kimi-k3",
+    "zai:glm-5.3",
+    "zai:glm-5.3-flash",
+    "minimax:MiniMax-M3",
+  ],
+);
+for (const hidden of [
+  "openai:gpt-5.6-sol",
+  "openai:gpt-5.6-luna",
+  "moonshot:kimi-k2.7-code",
+  "zai:glm-5.2",
+  "zai:glm-5-turbo",
+  "zai:glm-4.7",
+  "zai:glm-4.5-air",
+  "minimax:MiniMax-M2.7",
+]) {
+  assert.equal(api.catalogInfo(hidden)?.hidden, true, hidden);
+  assert.equal(api.modelInfo(hidden)?.provider, hidden.split(":")[0], hidden);
+}
+assert.equal(api.catalog.filter(({ hidden }) => hidden === true).length, 8);
 delete credentials.CC_ZAI_AUTH_TOKEN;
 delete credentials.CC_MINIMAX_AUTH_TOKEN;
 delete credentials.CC_OPENAI_PROXY_AUTH_TOKEN;
 assert.deepEqual(
   Array.from(api.pickerCatalog(), ({ value }) => value),
-  ["moonshot:kimi-k3", "moonshot:kimi-k2.7-code"],
+  ["moonshot:kimi-k3"],
 );
 delete credentials.CC_KIMI_AUTH_TOKEN;
 delete credentials.CC_OPENAI_AVAILABLE;

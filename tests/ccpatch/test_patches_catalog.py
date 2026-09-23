@@ -1092,6 +1092,35 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
     assert "openai:gpt-5.6-sol" in patched
     assert "openai:gpt-5.6-terra" in patched
     assert "openai:gpt-5.6-luna" in patched
+    catalog_start = patched.index("const _ccMultiProviderCatalog=[")
+    catalog = patched[catalog_start : patched.index("];", catalog_start)]
+    assert catalog.index('"openai:') < catalog.index('"moonshot:')
+    assert catalog.index('"moonshot:') < catalog.index('"zai:')
+    assert catalog.index('"zai:') < catalog.index('"minimax:')
+    for hidden_model in (
+        "openai:gpt-5.6-sol",
+        "openai:gpt-5.6-luna",
+        "moonshot:kimi-k2.7-code",
+        "zai:glm-5.2",
+        "zai:glm-5-turbo",
+        "zai:glm-4.7",
+        "zai:glm-4.5-air",
+        "minimax:MiniMax-M2.7",
+    ):
+        entry_start = catalog.index(f'{{"value":"{hidden_model}"')
+        entry = catalog[entry_start : catalog.index("}", entry_start)]
+        assert '"hidden":true' in entry, hidden_model
+    for visible_model in (
+        "openai:gpt-6-astra",
+        "openai:gpt-5.6-terra",
+        "moonshot:kimi-k3",
+        "zai:glm-5.3-flash",
+        "minimax:MiniMax-M3",
+    ):
+        entry_start = catalog.index(f'{{"value":"{visible_model}"')
+        entry = catalog[entry_start : catalog.index("}", entry_start)]
+        assert '"hidden"' not in entry, visible_model
+    assert "_ccEntry.hidden!==!0&&_ccMultiProviderAvailable(" in patched
     for priced_model in (
         '"moonshot:kimi-k3":{inputTokens:3,outputTokens:15,promptCacheWriteTokens:3,',
         '"moonshot:kimi-k2.7-code":{inputTokens:0.95,outputTokens:4,',

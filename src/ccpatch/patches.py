@@ -51,6 +51,9 @@ class MultiProviderModel(TypedDict):
     contextWindow: int
     maxOutputTokens: int
     costs: ModelCosts
+    # Hidden models stay recognized, resumable, and billable, but the
+    # interactive picker omits them. Use this for superseded releases.
+    hidden: NotRequired[bool]
 
 
 class MultiProviderDefinition(TypedDict):
@@ -2205,179 +2208,8 @@ def _model_costs_patch(model_costs: ModelCostsByModel) -> Patch:
 
 
 _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
-    {
-        "provider": "moonshot",
-        "attributionDomain": "moonshot.ai",
-        "baseURL": "https://api.kimi.com/coding",
-        "tokenEnv": "CC_KIMI_AUTH_TOKEN",
-        "defaultHeaders": {"User-Agent": "KimiCLI/1.5"},
-        "models": (
-            {
-                "wireModel": "kimi-k3",
-                "label": "Kimi K3",
-                "description": "Moonshot general-purpose model",
-                "contextWindow": 1_048_576,
-                "maxOutputTokens": 131_072,
-                "costs": {
-                    "inputTokens": 3,
-                    "outputTokens": 15,
-                    # Accounting assumption: charge cache writes at the ordinary
-                    # input-token rate because Kimi publishes cache-hit/cache-miss
-                    # prices rather than a separate cache-write price.
-                    # Source: https://platform.kimi.ai/docs/pricing/chat-k3.md
-                    "promptCacheWriteTokens": 3,
-                    "promptCacheReadTokens": 0.3,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "kimi-k2.7-code",
-                "label": "Kimi K2.7 Code",
-                "description": "Moonshot coding model",
-                "contextWindow": 262_144,
-                "maxOutputTokens": 32_768,
-                "costs": {
-                    "inputTokens": 0.95,
-                    "outputTokens": 4,
-                    "promptCacheWriteTokens": 0.95,
-                    "promptCacheReadTokens": 0.19,
-                    "webSearchRequests": 0,
-                },
-            },
-        ),
-    },
-    {
-        "provider": "zai",
-        "attributionDomain": "z.ai",
-        "baseURL": "https://api.z.ai/api/anthropic",
-        "tokenEnv": "CC_ZAI_AUTH_TOKEN",
-        "defaultHeaders": {},
-        "models": (
-            {
-                "wireModel": "glm-5.3",
-                "label": "GLM 5.3",
-                "description": "Z.ai flagship model",
-                "contextWindow": 1_000_000,
-                "maxOutputTokens": 131_072,
-                "costs": {
-                    "inputTokens": 1.4,
-                    "outputTokens": 4.4,
-                    "promptCacheWriteTokens": 1.4,
-                    "promptCacheReadTokens": 0.26,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "glm-5.3-flash",
-                "label": "GLM 5.3 Flash",
-                "description": "Z.ai fast model",
-                "contextWindow": 1_000_000,
-                "maxOutputTokens": 131_072,
-                # Use the standard rate effective on 2026-09-10, after the launch
-                # promotion ends. Source: https://docs.z.ai/guides/overview/pricing
-                "costs": {
-                    "inputTokens": 0.15,
-                    "outputTokens": 0.5,
-                    "promptCacheWriteTokens": 0.15,
-                    "promptCacheReadTokens": 0.03,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "glm-5.2",
-                "label": "GLM 5.2",
-                "description": "Z.ai coding model",
-                "contextWindow": 1_000_000,
-                "maxOutputTokens": 131_072,
-                "costs": {
-                    "inputTokens": 1.4,
-                    "outputTokens": 4.4,
-                    "promptCacheWriteTokens": 1.4,
-                    "promptCacheReadTokens": 0.26,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "glm-5-turbo",
-                "label": "GLM 5 Turbo",
-                "description": "Z.ai coding model",
-                "contextWindow": 200_000,
-                "maxOutputTokens": 131_072,
-                "costs": {
-                    "inputTokens": 1.2,
-                    "outputTokens": 4,
-                    "promptCacheWriteTokens": 1.2,
-                    "promptCacheReadTokens": 0.2,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "glm-4.7",
-                "label": "GLM 4.7",
-                "description": "Z.ai coding model",
-                "contextWindow": 204_800,
-                "maxOutputTokens": 131_072,
-                "costs": {
-                    "inputTokens": 0.6,
-                    "outputTokens": 2.2,
-                    "promptCacheWriteTokens": 0.6,
-                    "promptCacheReadTokens": 0.11,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "glm-4.5-air",
-                "label": "GLM 4.5 Air",
-                "description": "Z.ai coding model",
-                "contextWindow": 131_072,
-                "maxOutputTokens": 98_304,
-                "costs": {
-                    "inputTokens": 0.2,
-                    "outputTokens": 1.1,
-                    "promptCacheWriteTokens": 0.2,
-                    "promptCacheReadTokens": 0.03,
-                    "webSearchRequests": 0,
-                },
-            },
-        ),
-    },
-    {
-        "provider": "minimax",
-        "attributionDomain": "minimax.io",
-        "baseURL": "https://api.minimax.io/anthropic",
-        "tokenEnv": "CC_MINIMAX_AUTH_TOKEN",
-        "defaultHeaders": {},
-        "models": (
-            {
-                "wireModel": "MiniMax-M3",
-                "label": "MiniMax M3",
-                "description": "MiniMax coding model",
-                "contextWindow": 1_048_576,
-                "maxOutputTokens": 512_000,
-                "costs": {
-                    "inputTokens": 0.3,
-                    "outputTokens": 1.2,
-                    "promptCacheWriteTokens": 0.375,
-                    "promptCacheReadTokens": 0.06,
-                    "webSearchRequests": 0,
-                },
-            },
-            {
-                "wireModel": "MiniMax-M2.7",
-                "label": "MiniMax M2.7",
-                "description": "MiniMax coding model",
-                "contextWindow": 204_800,
-                "maxOutputTokens": 131_072,
-                "costs": {
-                    "inputTokens": 0.3,
-                    "outputTokens": 1.2,
-                    "promptCacheWriteTokens": 0.375,
-                    "promptCacheReadTokens": 0.06,
-                    "webSearchRequests": 0,
-                },
-            },
-        ),
-    },
+    # The picker lists providers in this order after the native Anthropic
+    # models. Keep OpenAI first.
     {
         "provider": "openai",
         "attributionDomain": "openai.com",
@@ -2431,6 +2263,7 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
             },
             {
                 "wireModel": "gpt-5.6-sol",
+                "hidden": True,
                 "label": "GPT-5.6 Sol",
                 "description": "OpenAI Codex model",
                 "contextWindow": 272_000,
@@ -2459,6 +2292,7 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
             },
             {
                 "wireModel": "gpt-5.6-luna",
+                "hidden": True,
                 "label": "GPT-5.6 Luna",
                 "description": "OpenAI Codex model",
                 "contextWindow": 272_000,
@@ -2469,6 +2303,185 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 0.25,
                     "promptCacheReadTokens": 0.02,
                     "webSearchRequests": 0.01,
+                },
+            },
+        ),
+    },
+    {
+        "provider": "moonshot",
+        "attributionDomain": "moonshot.ai",
+        "baseURL": "https://api.kimi.com/coding",
+        "tokenEnv": "CC_KIMI_AUTH_TOKEN",
+        "defaultHeaders": {"User-Agent": "KimiCLI/1.5"},
+        "models": (
+            {
+                "wireModel": "kimi-k3",
+                "label": "Kimi K3",
+                "description": "Moonshot general-purpose model",
+                "contextWindow": 1_048_576,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 3,
+                    "outputTokens": 15,
+                    # Accounting assumption: charge cache writes at the ordinary
+                    # input-token rate because Kimi publishes cache-hit/cache-miss
+                    # prices rather than a separate cache-write price.
+                    # Source: https://platform.kimi.ai/docs/pricing/chat-k3.md
+                    "promptCacheWriteTokens": 3,
+                    "promptCacheReadTokens": 0.3,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "kimi-k2.7-code",
+                "hidden": True,
+                "label": "Kimi K2.7 Code",
+                "description": "Moonshot coding model",
+                "contextWindow": 262_144,
+                "maxOutputTokens": 32_768,
+                "costs": {
+                    "inputTokens": 0.95,
+                    "outputTokens": 4,
+                    "promptCacheWriteTokens": 0.95,
+                    "promptCacheReadTokens": 0.19,
+                    "webSearchRequests": 0,
+                },
+            },
+        ),
+    },
+    {
+        "provider": "zai",
+        "attributionDomain": "z.ai",
+        "baseURL": "https://api.z.ai/api/anthropic",
+        "tokenEnv": "CC_ZAI_AUTH_TOKEN",
+        "defaultHeaders": {},
+        "models": (
+            {
+                "wireModel": "glm-5.3",
+                "label": "GLM 5.3",
+                "description": "Z.ai flagship model",
+                "contextWindow": 1_000_000,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 1.4,
+                    "outputTokens": 4.4,
+                    "promptCacheWriteTokens": 1.4,
+                    "promptCacheReadTokens": 0.26,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "glm-5.3-flash",
+                "label": "GLM 5.3 Flash",
+                "description": "Z.ai fast model",
+                "contextWindow": 1_000_000,
+                "maxOutputTokens": 131_072,
+                # Use the standard rate effective on 2026-09-10, after the launch
+                # promotion ends. Source: https://docs.z.ai/guides/overview/pricing
+                "costs": {
+                    "inputTokens": 0.15,
+                    "outputTokens": 0.5,
+                    "promptCacheWriteTokens": 0.15,
+                    "promptCacheReadTokens": 0.03,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "glm-5.2",
+                "hidden": True,
+                "label": "GLM 5.2",
+                "description": "Z.ai coding model",
+                "contextWindow": 1_000_000,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 1.4,
+                    "outputTokens": 4.4,
+                    "promptCacheWriteTokens": 1.4,
+                    "promptCacheReadTokens": 0.26,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "glm-5-turbo",
+                "hidden": True,
+                "label": "GLM 5 Turbo",
+                "description": "Z.ai coding model",
+                "contextWindow": 200_000,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 1.2,
+                    "outputTokens": 4,
+                    "promptCacheWriteTokens": 1.2,
+                    "promptCacheReadTokens": 0.2,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "glm-4.7",
+                "hidden": True,
+                "label": "GLM 4.7",
+                "description": "Z.ai coding model",
+                "contextWindow": 204_800,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 0.6,
+                    "outputTokens": 2.2,
+                    "promptCacheWriteTokens": 0.6,
+                    "promptCacheReadTokens": 0.11,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "glm-4.5-air",
+                "hidden": True,
+                "label": "GLM 4.5 Air",
+                "description": "Z.ai coding model",
+                "contextWindow": 131_072,
+                "maxOutputTokens": 98_304,
+                "costs": {
+                    "inputTokens": 0.2,
+                    "outputTokens": 1.1,
+                    "promptCacheWriteTokens": 0.2,
+                    "promptCacheReadTokens": 0.03,
+                    "webSearchRequests": 0,
+                },
+            },
+        ),
+    },
+    {
+        "provider": "minimax",
+        "attributionDomain": "minimax.io",
+        "baseURL": "https://api.minimax.io/anthropic",
+        "tokenEnv": "CC_MINIMAX_AUTH_TOKEN",
+        "defaultHeaders": {},
+        "models": (
+            {
+                "wireModel": "MiniMax-M3",
+                "label": "MiniMax M3",
+                "description": "MiniMax coding model",
+                "contextWindow": 1_048_576,
+                "maxOutputTokens": 512_000,
+                "costs": {
+                    "inputTokens": 0.3,
+                    "outputTokens": 1.2,
+                    "promptCacheWriteTokens": 0.375,
+                    "promptCacheReadTokens": 0.06,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
+                "wireModel": "MiniMax-M2.7",
+                "hidden": True,
+                "label": "MiniMax M2.7",
+                "description": "MiniMax coding model",
+                "contextWindow": 204_800,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 0.3,
+                    "outputTokens": 1.2,
+                    "promptCacheWriteTokens": 0.375,
+                    "promptCacheReadTokens": 0.06,
+                    "webSearchRequests": 0,
                 },
             },
         ),
@@ -2510,6 +2523,7 @@ _MULTI_PROVIDER_CATALOG = json.dumps(
             "description": model["description"],
             "contextWindow": model["contextWindow"],
             "maxOutputTokens": model["maxOutputTokens"],
+            **({"hidden": True} if model.get("hidden") else {}),
         }
         for definition in _MULTI_PROVIDER_CATALOG_SOURCE
         for model in definition["models"]
@@ -2582,8 +2596,8 @@ _MULTI_PROVIDER_HELPER = (
     "!!_ccBaseURL&&(!_ccDefinition.availabilityEnv||process.env["
     '_ccDefinition.availabilityEnv]==="1")}function '
     "_ccMultiProviderPickerCatalog(){return _ccMultiProviderCatalog.filter("
-    "(_ccEntry)=>_ccMultiProviderAvailable(_ccEntry.value.slice(0,"
-    '_ccEntry.value.indexOf(":"))))}'
+    "(_ccEntry)=>_ccEntry.hidden!==!0&&_ccMultiProviderAvailable("
+    '_ccEntry.value.slice(0,_ccEntry.value.indexOf(":"))))}'
     "function _ccMultiProviderToolAllowed(_ccModel,_ccTool){return _ccTool.isMcp===!0||"
     '_ccTool.name!=="WebSearch"||_ccMultiProviderModelProvider(_ccModel)==="anthropic"}'
     "function _ccMultiProviderSafeFetchOptions(_ccOptions){if(!_ccOptions)return "

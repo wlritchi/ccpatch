@@ -230,6 +230,15 @@ test("probeOpenAiAuth accepts the installed pi-ai Models API shape", async () =>
       },
     ],
   });
+  for (const [id, cost] of [
+    ["gpt-6-sol", { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 }],
+    ["gpt-6-luna", { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }],
+  ]) {
+    const model = models.getModel("openai-codex", id);
+    assert.equal(model?.contextWindow, 272000, id);
+    const { tiers, ...base } = model?.cost ?? {};
+    assert.deepEqual(base, cost, id);
+  }
 });
 
 test("capability route sanitizes operational probe failures", async (t) => {

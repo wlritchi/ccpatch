@@ -40,13 +40,13 @@ const TOKENIZER_ENCODING_BY_MODEL = Object.freeze({
   // pi GPT-5 and GPT-6 catalog entries as provisional policy until OpenAI
   // publishes model-specific mappings for these exact IDs.
   "gpt-5.3-codex-spark": "o200k_base",
-  "gpt-5.4": "o200k_base",
-  "gpt-5.4-mini": "o200k_base",
   "gpt-5.5": "o200k_base",
   "gpt-5.6-luna": "o200k_base",
   "gpt-5.6-sol": "o200k_base",
   "gpt-5.6-terra": "o200k_base",
   "gpt-6-astra": "o200k_base",
+  "gpt-6-luna": "o200k_base",
+  "gpt-6-sol": "o200k_base",
 });
 
 let accountPoolPromise;

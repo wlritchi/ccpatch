@@ -63,6 +63,51 @@ The proxy reads provider credentials from `~/.pi/agent/auth.json` by default.
 refreshes are persisted there. Run `cc-openai-proxy --help` for model, transport,
 and cache settings.
 
+### Several Codex subscriptions
+
+Each pi auth file is one ChatGPT account. By default the proxy uses the primary
+auth file plus every `auth.*.json` next to it, for example
+`~/.pi/agent/auth.json` and `~/.pi/agent/auth.work.json`.
+`CC_OPENAI_AUTH_FILES` replaces that discovery with an explicit list separated
+by the platform path delimiter (`:` on Linux and macOS). To log a second account
+in with the pi CLI, point it at another directory, run `/login`, and copy or
+link the resulting file into place:
+
+```sh
+PI_CODING_AGENT_DIR=~/.pi/agent-2 pi
+ln -s ../agent-2/auth.json ~/.pi/agent/auth.work.json
+```
+
+The proxy persists refreshed tokens into whichever file it read, so a symlink
+keeps the pi CLI in the second directory logged in as well.
+
+The proxy reads each account's usage from the Codex usage endpoint (no quota is
+consumed) and refreshes it every `CC_OPENAI_USAGE_TTL_MS` milliseconds (default
+300000). Requests are spread over accounts in proportion to remaining capacity
+per hour until reset: an account at 10% remaining with a reset in six hours
+weighs the same as one with half the plan capacity, 10% remaining, and a reset
+in three hours. Plan capacities are relative multipliers from a built-in table
+(`plus` 1, `prolite` 5, `pro` 20, ...); `CC_OPENAI_PLAN_CAPACITY=plus=1,pro=20`
+overrides entries. A Claude Code session stays on the account it first used
+while that account is available, which keeps the Codex prompt cache warm.
+
+### Usage limits
+
+When an account reports a usage limit, the proxy marks it unavailable until the
+reset time and retries the request on another account. When no account is
+available, the proxy answers with an Anthropic-shaped 429 (`rate_limit_error`)
+carrying the `anthropic-ratelimit-unified-*` headers, with the earliest reset
+across accounts. Claude Code then shows its usage-limit dialog ("You've hit your
+weekly limit · resets ...") and can wait for the reset instead of reporting a
+server error. Claude Code only waits automatically when the reset is less than
+24 hours away; weekly Codex windows usually exceed that.
+
+Successful responses carry the same headers with `allowed` status and the
+serving account's window utilization, so Claude Code's usage warnings reflect
+the Codex plan. Set `CC_OPENAI_USAGE_HEADERS=0` to omit them. Transient
+per-minute rate limits are returned as a plain 429 with `retry-after`, which
+Claude Code retries by itself.
+
 For a separately managed proxy, set both `CC_OPENAI_PROXY_URL` and
 `CC_OPENAI_PROXY_AUTH_TOKEN`. An explicit but unusable configuration is an error;
 the launcher does not silently fall back. Use TLS or a trusted local tunnel when

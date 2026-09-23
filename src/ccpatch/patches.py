@@ -4106,6 +4106,39 @@ COMPACT_SESSION = PatchSet(
 )
 
 
+# 2.1.274 adds a server-side auto mode classifier ("arbiter"). The sampling
+# request carries the dangerous-tool-use beta and a safeguards field, and the
+# verdict arrives in message_delta.safeguard_results. GrowthBook flag
+# tengu_smooth_chipmunk selects "arbiter" for first-party requests. That mode has
+# no local fallback: a response without safeguard_results denies the tool call.
+# The proxy returns no verdict, so select "arbiterWithLocalFallback" instead. The
+# client keeps a server verdict when one arrives and runs the local classifier
+# when none does. The request still sends the classifier context, so the proxy
+# can implement the protocol later.
+AUTO_MODE_LOCAL_FALLBACK = PatchSet(
+    name="auto-mode-local-fallback",
+    patches=(
+        Patch(
+            name="select-arbiter-with-local-fallback",
+            pattern=re.compile(
+                rf'(if\({_ID}\(\)==="thirdParty"\)return {_ID}\(\)&&!{_ID}\(\)'
+                rf'&&!{_ID}\(\)\?"arbiterWithLocalFallback":"off";'
+                rf'if\({_ID}\(\)&&!{_ID}\(\)&&!{_ID}\(\)\)return)"arbiter"'
+                r'(;return"off"\})'
+            ),
+            replacement=r'\1"arbiterWithLocalFallback"\2',
+        ),
+    ),
+    verify_present=(
+        re.compile(r'\(\)\)return"arbiterWithLocalFallback";return"off"\}'),
+    ),
+    verify_absent=(re.compile(r'return"arbiter";return"off"\}'),),
+    min_version=(2, 1, 274),
+    max_version=(2, 1, 275),
+    requires_version=True,
+)
+
+
 def _select_patch_variant(
     version: Version | None, base: PatchSet, variant: PatchSet
 ) -> PatchSet:
@@ -4149,4 +4182,9 @@ def default_patch_sets(version: Version | None) -> list[PatchSet]:
         ),
         COMPACT_SESSION,
         *([RETRACTION_ARCHIVE] if RETRACTION_ARCHIVE.applies_to(version) else []),
+        *(
+            [AUTO_MODE_LOCAL_FALLBACK]
+            if AUTO_MODE_LOCAL_FALLBACK.applies_to(version)
+            else []
+        ),
     ]

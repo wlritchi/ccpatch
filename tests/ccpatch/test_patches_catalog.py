@@ -20,6 +20,7 @@ from ccpatch.patches import (
     _PROVIDER_ENV_EXPLICIT_KEYS,
     _PROVIDER_ENV_VERTEX_REGION_KEYS,
     _SYNTAX_DARK_MAP,
+    AUTO_MODE_LOCAL_FALLBACK,
     BACKGROUND_PROVIDER_ENV,
     BACKGROUND_PROVIDER_ENV_198,
     CATPPUCCIN_SYNTAX,
@@ -27,6 +28,7 @@ from ccpatch.patches import (
     COMPACT_SESSION,
     DEV_CHANNEL_INHERITANCE,
     MULTI_PROVIDER_SDK,
+    RETRACTION_ARCHIVE,
     THINKING_SUMMARIES_NONINTERACTIVE,
     THINKING_SUMMARIES_NONINTERACTIVE_198,
     Patch,
@@ -1498,6 +1500,14 @@ def test_198_variants_are_narrowly_selected() -> None:
         assert MULTI_PROVIDER_SDK.applies_to((2, 1, 274))
         assert not MULTI_PROVIDER_SDK.applies_to((2, 1, 275))
         assert MULTI_PROVIDER_SDK.max_version == (2, 1, 275)
+    sets = default_patch_sets((2, 1, 274))
+    assert len(sets) == 11
+    assert sets[9] is RETRACTION_ARCHIVE
+    assert sets[10] is AUTO_MODE_LOCAL_FALLBACK
+    assert all(patch_set.applies_to((2, 1, 274)) for patch_set in sets)
+    assert AUTO_MODE_LOCAL_FALLBACK not in default_patch_sets((2, 1, 273))
+    assert AUTO_MODE_LOCAL_FALLBACK not in default_patch_sets((2, 1, 275))
+    assert AUTO_MODE_LOCAL_FALLBACK not in default_patch_sets(None)
 
 
 def test_198_provider_respawn_uses_transient_environment() -> None:
@@ -2065,3 +2075,34 @@ def test_compact_session_idempotent(f: _CompactFlavor) -> None:
     # required-match guard raises, so no double-injection is possible.
     with pytest.raises(PatchError, match="define-compact-session-tool"):
         COMPACT_SESSION.apply(once)
+
+
+_AUTO_MODE_SRC = (
+    'function MODE(e){if(!AUTO(e)||!ELIGIBLE())return"off";'
+    'if(DEPLOYMENT()==="thirdParty")return OPT_IN()&&!REFUSED()&&!DISABLED()'
+    '?"arbiterWithLocalFallback":"off";'
+    'if(FLAG()&&!KILL()&&!DISABLED())return"arbiter";return"off"}'
+    'function IS_SERVER(e){return e==="arbiter"||e==="arbiterWithLocalFallback"}'
+    'function FALLBACK(e,n){return e==="arbiterWithLocalFallback"&&NONE(n)}'
+)
+
+
+def test_auto_mode_first_party_selects_local_fallback() -> None:
+    out = AUTO_MODE_LOCAL_FALLBACK.apply(_AUTO_MODE_SRC)
+    assert (
+        'if(FLAG()&&!KILL()&&!DISABLED())return"arbiterWithLocalFallback";'
+        'return"off"}' in out
+    )
+    # the third-party branch and the mode predicates are untouched
+    assert (
+        'return OPT_IN()&&!REFUSED()&&!DISABLED()?"arbiterWithLocalFallback":"off";'
+        in out
+    )
+    assert 'e==="arbiter"||e==="arbiterWithLocalFallback"' in out
+    assert 'return"arbiter";' not in out
+    for pattern in AUTO_MODE_LOCAL_FALLBACK.verify_present:
+        assert pattern.search(out)
+    for pattern in AUTO_MODE_LOCAL_FALLBACK.verify_absent:
+        assert not pattern.search(out)
+    with pytest.raises(PatchError):
+        AUTO_MODE_LOCAL_FALLBACK.apply(out)

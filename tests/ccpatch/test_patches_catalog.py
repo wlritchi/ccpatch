@@ -1058,6 +1058,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
     assert 'code:"EPROVIDERINCOMPATIBLE"' in patched
     assert "model:KA(REQ1.model)" in patched
     assert "OPTIONS.push(..._ccMultiProviderPickerCatalog())" in patched
+    assert "===null)OPTIONS.push(" not in patched
     assert "_ccMultiProviderCatalog.find" in patched
     assert "_ccMultiProviderCatalog.filter" in patched
     assert "CC_KIMI_AUTH_TOKEN" in patched

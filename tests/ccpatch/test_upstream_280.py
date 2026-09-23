@@ -396,3 +396,24 @@ const backend={remote:true};await new Writer().performRemoveByUuid("path","old",
 assert.deepEqual(calls,[{backend,key:"key",uuid:"old"}]);
 ''',
     )
+
+
+def test_picker_appends_external_rows_with_served_catalog(tmp_path: Path) -> None:
+    patch = next(
+        p for p in MULTI_PROVIDER_SDK.patches if p.name == 'add-model-picker-entries'
+    )
+    source = 'function wj(e,n){let r=yj(e,n),s=r??fj(e),g=a.ANTHROPIC_CUSTOM_MODEL_OPTION;return s}'
+    result = PatchSet('test', (patch,)).apply(source)
+    assert 'if(r===null)' not in result
+    assert 's.push(..._ccMultiProviderPickerCatalog());' in result
+    _node(
+        tmp_path,
+        result
+        + '''
+const a={};
+const _ccMultiProviderPickerCatalog=()=>[{value:"openai:gpt-6-astra"}];
+const served=[{value:null},{value:"claude-fable-5-1"}];
+const yj=()=>served,fj=()=>{throw Error("compiled lineup must not be used")};
+assert.deepEqual(wj(!1,null).map((row)=>row.value),[null,"claude-fable-5-1","openai:gpt-6-astra"]);
+''',
+    )

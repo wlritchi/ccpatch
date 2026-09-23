@@ -3102,16 +3102,12 @@ def _surface_multi_provider_count_tokens_error(match: re.Match[str]) -> str:
 
 
 def _add_multi_provider_picker_models(match: re.Match[str]) -> str:
-    if match.group("served_options"):
-        return (
-            match.group(0)
-            + f"if({match.group('served')}===null)"
-            + f"{match.group('served_options')}.push(..._ccMultiProviderPickerCatalog());"
-        )
-    return (
-        match.group(0)
-        + f"{match.group('options')}.push(..._ccMultiProviderPickerCatalog());"
-    )
+    # Append the external rows even when a server-served catalog replaces the
+    # compiled lineup. The served catalog only lists first-party models, and
+    # first-party accounts receive one, so a served-only guard hides every
+    # external provider from the picker.
+    options = match.group("served_options") or match.group("options")
+    return match.group(0) + f"{options}.push(..._ccMultiProviderPickerCatalog());"
 
 
 def _recognize_multi_provider_model(match: re.Match[str]) -> str:

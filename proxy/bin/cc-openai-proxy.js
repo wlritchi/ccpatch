@@ -1135,6 +1135,80 @@ async function streamAnthropicResponse(req, res, piStream, modelId, headers = un
   res.end();
 }
 
+// Betas that Claude Code 2.1.274 can put on a request. The proxy honors none
+// of them and forwards none of them. Most select first-party API behaviors
+// that the translation to Codex loses without harm. A beta outside this set
+// can change the request or response protocol, as dangerous-tool-use did: the
+// server-side auto mode classifier returns its verdict in
+// message_delta.safeguard_results, and the proxy sends none. Log each unknown
+// beta once so a new protocol shows up before it breaks a session.
+const KNOWN_BETAS = new Set([
+  "advanced-tool-use-2025-11-20",
+  "advisor-tool-2026-03-01",
+  "afk-mode-2026-01-31",
+  "agent-memory-2026-07-22",
+  "auto-mode-classifier-2026-07-16",
+  "cache-diagnosis-2026-04-07",
+  "context-1m-2025-08-07",
+  "context-hint-2026-04-09",
+  "context-management-2025-06-27",
+  "dangerous-tool-use-2026-09-03",
+  "effort-2025-11-24",
+  "extended-cache-ttl-2025-04-11",
+  "fallback-credit-2026-06-01",
+  "fast-mode-2026-02-01",
+  "files-api-2025-04-14",
+  "interleaved-thinking-2025-05-14",
+  "mcp-servers-2025-12-04",
+  "message-threads-2026-08-12",
+  "mid-conversation-system-2026-04-07",
+  "mid-conversation-system-clear-at-2026-08-21",
+  "mid-conversation-tool-changes-2026-07-01",
+  "oauth-2025-04-20",
+  "per-turn-control-2026-07-01",
+  "prompt-caching-evict-2026-05-12",
+  "prompt-caching-scope-2026-01-05",
+  "redact-thinking-2026-02-12",
+  "server-side-fallback-2026-06-01",
+  "server-side-fallback-2026-07-01",
+  "skills-2025-10-02",
+  "structured-outputs-2025-12-15",
+  "task-budgets-2026-03-13",
+  "thinking-binding-controls-2026-08-01",
+  "thinking-display-updates-2026-08-18",
+  "thinking-resumption-2026-07-17",
+  "thinking-token-count-2026-05-13",
+  "token-counting-2024-11-01",
+  "tool-search-tool-2025-10-19",
+  "web-search-2025-03-05",
+]);
+const reportedBetas = new Set();
+
+// The SDK sends betas as a comma-separated anthropic-beta header. A body
+// `betas` array is accepted as well for clients that bypass the SDK.
+function requestBetas(req, body) {
+  const values = [];
+  const header = req.headers?.["anthropic-beta"];
+  for (const value of Array.isArray(header) ? header : [header]) {
+    if (typeof value === "string") values.push(...value.split(","));
+  }
+  if (Array.isArray(body?.betas)) {
+    values.push(...body.betas.filter((value) => typeof value === "string"));
+  }
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function warnUnknownBetas(req, body, reported = reportedBetas, log = logEvent) {
+  const unknown = [];
+  for (const beta of requestBetas(req, body)) {
+    if (KNOWN_BETAS.has(beta) || reported.has(beta)) continue;
+    reported.add(beta);
+    unknown.push(beta);
+    log({ category: "unknown_beta", beta, path: logPath(req) });
+  }
+  return unknown;
+}
+
 // Claude Code sends X-Claude-Code-Session-Id on every API request. The same
 // value keys the Codex prompt cache and the account binding.
 function sessionIdFor(req) {
@@ -1319,6 +1393,7 @@ async function assertKnownModel(modelName, catalog = undefined) {
 
 async function handleCountTokens(req, res) {
   const body = await readJsonBody(req);
+  warnUnknownBetas(req, body);
   const { model } = await assertKnownModel(body.model);
   const inputTokens = await estimateInputTokensOffThread(model, body);
   sendJson(res, 200, countTokensResponse(inputTokens));
@@ -1336,6 +1411,7 @@ function wantsStreaming(body) {
 // account or become a real 429 instead of an SSE error after a 200.
 async function handleMessages(req, res, pool) {
   const body = await readJsonBody(req);
+  warnUnknownBetas(req, body);
   const { model, modelId } = await assertKnownModel(body.model, pool.primaryModels());
 
   const controller = new AbortController();
@@ -1518,6 +1594,7 @@ export {
   parseArgs,
   piContentToAnthropic,
   probeOpenAiAuth,
+  requestBetas,
   route,
   piMessageToAnthropic,
   resolveModelId,
@@ -1527,6 +1604,7 @@ export {
   thinkingToReasoning,
   usageLimitError,
   wantsStreaming,
+  warnUnknownBetas,
 };
 
 async function main() {

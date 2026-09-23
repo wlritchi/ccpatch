@@ -149,7 +149,7 @@ def test_registry_anchor_rejects_mutations(old: str, new: str) -> None:
 )
 def test_default_variant_boundaries(version: Version | None, modern: bool) -> None:
     selected = default_patch_sets(version)
-    assert len(selected) == 9
+    assert len(selected) == (10 if version is None else 9)
     expected = BACKGROUND_PROVIDER_ENV_198 if modern else BACKGROUND_PROVIDER_ENV
     assert selected[4].name == expected.name
     if version in ((2, 1, 207), (2, 1, 208), (2, 1, 209), (2, 1, 210), (2, 1, 211)):

@@ -35,7 +35,7 @@ def test_carried_patches_fail_loudly_on_unrecognized_source(
     version: tuple[int, int, int],
 ) -> None:
     selected = default_patch_sets(version)
-    assert len(selected) == 11
+    assert len(selected) == (12 if version >= (2, 1, 280) else 11)
     assert selected[7] is THINKING_SUMMARIES_NONINTERACTIVE_198
     for patch_set in selected:
         assert patch_set.max_version is None

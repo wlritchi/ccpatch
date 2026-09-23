@@ -256,6 +256,116 @@ _THINKING_UNGROUP = Patch(
 )
 
 
+def _stream_thinking_events(match: re.Match[str]) -> str:
+    event, callbacks = match.group("event", "callbacks")
+    return (
+        match[0]
+        + f"let _ccThinkingEvent={event}.event;"
+        + f"let _ccSetThinking={callbacks}.onStreamingThinking;"
+        + 'if(_ccThinkingEvent?.type==="message_start")_ccSetThinking?.(()=>null);'
+        + 'if(_ccThinkingEvent?.type==="content_block_start")'
+        + '_ccSetThinking?.(()=>_ccThinkingEvent.content_block.type==="thinking"?'
+        + '{thinking:_ccThinkingEvent.content_block.thinking??"",isStreaming:true}:null);'
+        + 'if(_ccThinkingEvent?.type==="content_block_delta"&&'
+        + '_ccThinkingEvent.delta.type==="thinking_delta"&&'
+        + 'typeof _ccThinkingEvent.delta.thinking==="string")'
+        + '_ccSetThinking?.(previous=>previous?.isStreaming?'
+        + '{thinking:(previous.thinking+_ccThinkingEvent.delta.thinking).slice(0,1e6),'
+        + 'isStreaming:true}:previous);'
+    )
+
+
+def _stream_thinking_view(match: re.Match[str], bindings: dict[str, str]) -> str:
+    jsx, renderer, subscribe, deferred = (
+        bindings[key] for key in ("jsx", "renderer", "subscribe", "deferred")
+    )
+    return (
+        'function _ccThinkingPreview({stream}){'
+        + f'let current={subscribe}(stream,state=>state.streamingThinking);'
+        + f'let text={deferred}(current?.thinking??"");'
+        + 'return current?.isStreaming&&text?'
+        + f'{jsx}({renderer},{{addMargin:true,param:{{type:"thinking",thinking:text}},'
+        + 'isTranscriptMode:true,verbose:true}):null}'
+        + match[0]
+    )
+
+
+class _StreamingThinkingPatchSet(PatchSet):
+    @typing_override
+    def apply(self, source: str) -> str:
+        preview = self.patches[1]
+        for pattern in preview.identifiers:
+            definition = pattern.search(source)
+            consumer = preview.pattern.search(source)
+            if definition is None or consumer is None:
+                raise PatchError("streaming-thinking: missing preview binding")
+            for value in definition.groupdict().values():
+                source, _ = ensure_module_reference(
+                    source, definition.start(), value, consumer.start()
+                )
+        return super().apply(source)
+
+
+STREAMING_THINKING = _StreamingThinkingPatchSet(
+    name="streaming-thinking",
+    min_version=(2, 1, 280),
+    patches=(
+        Patch(
+            name="accumulate-streaming-thinking",
+            pattern=re.compile(
+                rf'function {_ID}\((?P<event>{_ID}),(?P<callbacks>{_ID}),{_ID}\)'
+                rf'\{{(?=let\{{onSetStreamMode:)'
+            ),
+            replacement=_stream_thinking_events,
+        ),
+        Patch(
+            name="define-streaming-thinking-preview",
+            pattern=re.compile(
+                rf'function {_ID}\({_ID}\)\{{let {_ID}={_ID}\(40\),{_ID},{_ID},{_ID};'
+                rf'(?=if\([^;]+\)\(\{{source:)'
+            ),
+            replacement="",
+            identifiers=(
+                re.compile(
+                    rf'(?P<jsx>{_ID})\((?P<renderer>{_ID}),\{{addMargin:{_ID},'
+                    rf'param:{_ID},isTranscriptMode:true,verbose:true\}}'
+                ),
+                re.compile(
+                    rf'(?P<subscribe>{_ID})\({_ID},\({_ID}\)=>'
+                    rf'{_ID}.isLoading\)\?\?!1'
+                ),
+                re.compile(
+                    rf'{_ID}=(?P<deferred>{_ID})\({_ID}\|\|!{_ID}\?{_ID}:{_ID}\)'
+                ),
+            ),
+            bound_replacement=_stream_thinking_view,
+        ),
+        Patch(
+            name="reset-streaming-thinking-preview",
+            pattern=re.compile(
+                r"beginTurn\(\)\{(?=this\._zeroResponseLength\(\))"
+                r"|reset\(\)\{(?=if\(this\.setUserInputOnProcessing\(void 0\))"
+            ),
+            replacement=r"\g<0>this.setStreamingThinking(null);",
+            expected_matches=(2,),
+        ),
+        Patch(
+            name="mount-streaming-thinking-preview",
+            pattern=re.compile(
+                rf'(?P<jsx>{_ID})\((?P<provider>{_ID})\.Provider,\{{value:'
+                rf'(?P<stream>{_ID}),children:\[(?P<children>{_ID},{_ID},{_ID})\]\}}\)'
+                rf'(?=,{_ID}\[35\]=)'
+            ),
+            replacement=(
+                r'\g<jsx>(\g<provider>.Provider,{value:\g<stream>,children:'
+                r'[\g<children>,\g<jsx>(_ccThinkingPreview,{stream:\g<stream>})]})'
+            ),
+        ),
+    ),
+    verify_present=(re.compile(r"function _ccThinkingPreview\("),),
+)
+
+
 def thinking_expanded(version: Version | None) -> PatchSet:
     """Always render assistant thinking in full (pre- and post-2.1.151)."""
     patches = _THINKING_RENDER
@@ -4362,6 +4472,7 @@ def default_patch_sets(version: Version | None) -> list[PatchSet]:
             THINKING_SUMMARIES_NONINTERACTIVE_198,
         ),
         COMPACT_SESSION,
+        *([STREAMING_THINKING] if STREAMING_THINKING.applies_to(version) else []),
         *([RETRACTION_ARCHIVE] if RETRACTION_ARCHIVE.applies_to(version) else []),
         *(
             [AUTO_MODE_LOCAL_FALLBACK]

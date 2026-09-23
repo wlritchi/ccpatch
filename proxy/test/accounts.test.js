@@ -29,7 +29,7 @@ const NOW_MS = 1_790_064_000_000; // 2026-09-22T06:40:00Z
 const NOW_S = NOW_MS / 1000;
 const WEEK = 604_800;
 const FIVE_HOURS = 18_000;
-const MODEL = { id: "gpt-5.6-sol", provider: "openai-codex" };
+const MODEL = { id: "gpt-6-sol", provider: "openai-codex" };
 
 // Observed on 2026-09-22 from an exhausted prolite account.
 const usagePayload = {

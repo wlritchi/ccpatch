@@ -25,9 +25,10 @@ import { loadOrCreateProxyToken, proxyAuthDiagnostic, resolveProxyAuthPath } fro
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 17780;
 const DEFAULT_PROVIDER = "openai-codex";
-const DEFAULT_MODEL = "gpt-5.6-sol";
+const DEFAULT_MODEL = "gpt-6-sol";
+const DEFAULT_FABLE_MODEL = "gpt-6-astra";
 const DEFAULT_SONNET_MODEL = "gpt-5.6-terra";
-const DEFAULT_HAIKU_MODEL = "gpt-5.6-luna";
+const DEFAULT_HAIKU_MODEL = "gpt-6-luna";
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
 const TOOL_ID_PREFIX = "ccpatch_tc1_";
 const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
@@ -59,7 +60,8 @@ function usage() {
 
 Environment:
   CC_OPENAI_MODEL            Override all requested models
-  CC_OPENAI_OPUS_MODEL       Model for Anthropic opus and fable requests (${DEFAULT_MODEL})
+  CC_OPENAI_FABLE_MODEL      Model for Anthropic fable requests (${DEFAULT_FABLE_MODEL})
+  CC_OPENAI_OPUS_MODEL       Model for Anthropic opus requests (${DEFAULT_MODEL})
   CC_OPENAI_SONNET_MODEL     Model for Anthropic sonnet requests (${DEFAULT_SONNET_MODEL})
   CC_OPENAI_HAIKU_MODEL      Model for Anthropic haiku requests (${DEFAULT_HAIKU_MODEL})
   CC_OPENAI_AUTH_FILE        Auth file (default ~/.pi/agent/auth.json); sibling auth.*.json files are added
@@ -329,7 +331,14 @@ function resolveModelId(requestedModel) {
   if (model.includes("haiku")) {
     return process.env.CC_OPENAI_HAIKU_MODEL || DEFAULT_HAIKU_MODEL;
   }
-  if (model.includes("opus") || model.includes("fable")) {
+  if (model.includes("fable")) {
+    return (
+      process.env.CC_OPENAI_FABLE_MODEL ||
+      process.env.CC_OPENAI_DEFAULT_MODEL ||
+      DEFAULT_FABLE_MODEL
+    );
+  }
+  if (model.includes("opus")) {
     return process.env.CC_OPENAI_OPUS_MODEL || process.env.CC_OPENAI_DEFAULT_MODEL || DEFAULT_MODEL;
   }
   if (model.includes("sonnet")) {

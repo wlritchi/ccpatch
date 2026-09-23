@@ -10,7 +10,6 @@ from ccpatch.patches import (
     _PROVIDER_ENV_RESPAWN_GUARD,
     BACKGROUND_PROVIDER_ENV,
     CHANNELS_ENABLED,
-    THINKING_SUMMARIES_NONINTERACTIVE,
     THINKING_SUMMARIES_NONINTERACTIVE_198,
     Patch,
     PatchError,
@@ -24,17 +23,25 @@ from ccpatch.patches import (
 )
 
 
-@pytest.mark.parametrize("release", range(198, 275))
-def test_thinking_variant_selected_through_verified_release(release: int) -> None:
+@pytest.mark.parametrize("release", range(198, 281))
+def test_thinking_variant_selected_from_198(release: int) -> None:
     variant = default_patch_sets((2, 1, release))[7]
     assert variant is THINKING_SUMMARIES_NONINTERACTIVE_198
     assert variant.applies_to((2, 1, release))
 
 
-def test_thinking_variant_stops_after_verified_release() -> None:
-    assert THINKING_SUMMARIES_NONINTERACTIVE_198.max_version == (2, 1, 275)
-    assert not THINKING_SUMMARIES_NONINTERACTIVE_198.applies_to((2, 1, 275))
-    assert default_patch_sets((2, 1, 275))[7] is THINKING_SUMMARIES_NONINTERACTIVE
+@pytest.mark.parametrize("version", [(2, 1, 275), (2, 1, 280), (3, 0, 0)])
+def test_carried_patches_fail_loudly_on_unrecognized_source(
+    version: tuple[int, int, int],
+) -> None:
+    selected = default_patch_sets(version)
+    assert len(selected) == 11
+    assert selected[7] is THINKING_SUMMARIES_NONINTERACTIVE_198
+    for patch_set in selected:
+        assert patch_set.max_version is None
+        assert patch_set.applies_to(version)
+    with pytest.raises(PatchError, match="ungate-thinking-display-default"):
+        selected[7].apply("unrecognized upstream source")
 
 
 # A minified-ish snippet exercising all three thinking patches.

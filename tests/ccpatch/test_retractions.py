@@ -36,8 +36,10 @@ def _between(source: str, start: str, end: str) -> str:
 
 
 def test_version_gate() -> None:
-    assert RETRACTION_ARCHIVE in default_patch_sets((2, 1, 274))
-    for version in (None, (2, 1, 273), (2, 1, 275)):
+    for version in ((2, 1, 274), (2, 1, 275), (2, 1, 280), (3, 0, 0)):
+        assert RETRACTION_ARCHIVE.applies_to(version)
+        assert RETRACTION_ARCHIVE in default_patch_sets(version)
+    for version in (None, (2, 1, 273)):
         assert not RETRACTION_ARCHIVE.applies_to(version)
         assert RETRACTION_ARCHIVE not in default_patch_sets(version)
     with pytest.raises(PatchError, match='missing transcript removal'):

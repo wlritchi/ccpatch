@@ -184,13 +184,13 @@ def test_default_variant_boundaries(version: Version | None, modern: bool) -> No
         assert all(patch_set.applies_to(version) for patch_set in selected)
     if version in ((2, 1, 207), (2, 1, 208), (2, 1, 209), (2, 1, 210), (2, 1, 211)):
         assert sum(len(patch_set.patches) for patch_set in selected) == 77
-        assert selected[4].max_version == (2, 1, 275)
+        assert selected[4].max_version is None
         assert BACKGROUND_PROVIDER_ENV_198.applies_to(version)
         assert THINKING_SUMMARIES_NONINTERACTIVE_198.applies_to(version)
         assert selected[4].applies_to((2, 1, 274))
-        assert not selected[4].applies_to((2, 1, 275))
+        assert selected[4].applies_to((3, 0, 0))
         assert selected[7].applies_to((2, 1, 274))
-        assert not selected[7].applies_to((2, 1, 275))
+        assert selected[7].applies_to((3, 0, 0))
 
 
 @pytest.mark.parametrize("scoped", [False, True])

@@ -1524,22 +1524,17 @@ def test_198_variants_are_narrowly_selected() -> None:
         for patch_set in (sets[4], sets[7]):
             assert not patch_set.applies_to((2, 1, 197))
             assert not patch_set.applies_to(None)
-        assert sets[4].applies_to((2, 1, 274))
-        assert not sets[4].applies_to((2, 1, 275))
-        assert sets[4].max_version == (2, 1, 275)
-        assert sets[7].applies_to((2, 1, 274))
-        assert not sets[7].applies_to((2, 1, 275))
-        assert sets[7].max_version == (2, 1, 275)
-        assert MULTI_PROVIDER_SDK.applies_to((2, 1, 274))
-        assert not MULTI_PROVIDER_SDK.applies_to((2, 1, 275))
-        assert MULTI_PROVIDER_SDK.max_version == (2, 1, 275)
+        for patch_set in (sets[4], sets[7], MULTI_PROVIDER_SDK):
+            assert patch_set.applies_to((2, 1, 274))
+            assert patch_set.applies_to((2, 1, 280))
+            assert patch_set.max_version is None
     sets = default_patch_sets((2, 1, 274))
     assert len(sets) == 11
     assert sets[9] is RETRACTION_ARCHIVE
     assert sets[10] is AUTO_MODE_LOCAL_FALLBACK
     assert all(patch_set.applies_to((2, 1, 274)) for patch_set in sets)
     assert AUTO_MODE_LOCAL_FALLBACK not in default_patch_sets((2, 1, 273))
-    assert AUTO_MODE_LOCAL_FALLBACK not in default_patch_sets((2, 1, 275))
+    assert AUTO_MODE_LOCAL_FALLBACK in default_patch_sets((2, 1, 280))
     assert AUTO_MODE_LOCAL_FALLBACK not in default_patch_sets(None)
 
 

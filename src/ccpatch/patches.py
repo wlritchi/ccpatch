@@ -1766,7 +1766,6 @@ def _override_patches(
 
 
 _PROVIDER_ENV_198_MIN = (2, 1, 198)
-_PROVIDER_ENV_198_MAX = (2, 1, 275)
 _CLAIMED_SPARE_AUTH = r"(?P=job)\.short,(?P=auth)\?\.\(\)"
 _CLAIMED_SPARE_AUTH_198 = rf"(?P=job)\.short,(?:{_ID}\((?P=job)\)\?void 0:(?P=auth)\?\.\(\)|{_ID}\((?P=job)\)\?(?P=auth)\?\.\(\):void 0)"
 
@@ -1831,7 +1830,7 @@ BACKGROUND_PROVIDER_ENV_198 = replace(
         re.compile(rf"{_ID}\.providerEnv\?\?\{{\}}"),
     ),
     min_version=_PROVIDER_ENV_198_MIN,
-    max_version=_PROVIDER_ENV_198_MAX,
+    max_version=None,
 )
 
 
@@ -3828,7 +3827,6 @@ MULTI_PROVIDER_SDK = _SDKPatchSet(
         ),
     ),
     min_version=_V_2_1_174,
-    max_version=(2, 1, 275),
     requires_version=True,
 )
 
@@ -3993,7 +3991,6 @@ THINKING_SUMMARIES_NONINTERACTIVE_198 = PatchSet(
         re.compile(rf'if\({_ID}\(\)\)return"summarized";if\(!{_ID}\)return;'),
     ),
     min_version=(2, 1, 198),
-    max_version=(2, 1, 275),
     requires_version=True,
 )
 
@@ -4176,7 +4173,6 @@ AUTO_MODE_LOCAL_FALLBACK = PatchSet(
     ),
     verify_absent=(re.compile(r'return"arbiter";return"off"\}'),),
     min_version=(2, 1, 274),
-    max_version=(2, 1, 275),
     requires_version=True,
 )
 
@@ -4202,7 +4198,6 @@ RETRACTION_ARCHIVE = _RetractionPatchSet(
     name='retraction-archive',
     patches=(),
     min_version=(2, 1, 274),
-    max_version=(2, 1, 275),
     requires_version=True,
 )
 

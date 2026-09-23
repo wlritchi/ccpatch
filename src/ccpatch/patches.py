@@ -28,6 +28,7 @@ from .module_runtime import (
     register_module_bootstrap,
     source_modules,
 )
+from .retractions import RetractionPatchError, patch_retractions
 
 Version = tuple[int, ...]
 
@@ -4112,6 +4113,25 @@ def _select_patch_variant(
     return variant if version is not None and variant.applies_to(version) else base
 
 
+@dataclass(frozen=True)
+class _RetractionPatchSet(PatchSet):
+    @typing_override
+    def apply(self, source: str) -> str:
+        try:
+            return patch_retractions(source)
+        except RetractionPatchError as exc:
+            raise PatchError(f'{self.name}: {exc}') from exc
+
+
+RETRACTION_ARCHIVE = _RetractionPatchSet(
+    name='retraction-archive',
+    patches=(),
+    min_version=(2, 1, 274),
+    max_version=(2, 1, 275),
+    requires_version=True,
+)
+
+
 def default_patch_sets(version: Version | None) -> list[PatchSet]:
     """The patch sets applied by ``ccpatch apply`` (order matters)."""
     return [
@@ -4128,4 +4148,5 @@ def default_patch_sets(version: Version | None) -> list[PatchSet]:
             THINKING_SUMMARIES_NONINTERACTIVE_198,
         ),
         COMPACT_SESSION,
+        *([RETRACTION_ARCHIVE] if RETRACTION_ARCHIVE.applies_to(version) else []),
     ]

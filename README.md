@@ -140,6 +140,53 @@ Claude's writers. **Do not apply it to active sessions**: a writer could append
 between that check and the replacement, or retain an open handle to the old file.
 It does not modify the messages already loaded in a running Claude process.
 
+## Retraction archives
+
+For Claude Code 2.1.274, retractions remove messages from active conversation
+state as before, but retain local archive copies. The patch covers terminal
+retractions, SDK persistence eviction, and text-continuation replacement. Tool
+cancellation and fallback behavior are unchanged. This does not undo tool side
+effects, and it does not yet display archived blocks.
+
+The transcript contains `ccpatch-retracted` metadata records instead of the
+removed message records. Each record has `schemaVersion: 1`, an `archiveId`,
+`originalUuid`, `sessionId`, and an escaped `payloadJson` containing the original
+record. When the persisted and live versions differ, `livePayloadJson` also
+retains the live version. There is no top-level `uuid` or nested message object:
+upstream deletion code must not mistake an archive for the original message.
+
+Stock 2.1.274 ignores these records when loading conversation context and keeps
+them during local transcript compaction. Compatibility is version-gated; other
+Claude versions and external transcript tools have not been validated. Forks
+and exports that copy only recognized messages can omit archives. Session
+retention and deletion still apply to the whole file.
+
+The patched process holds archives outside active message arrays, accessible to
+future display code through
+`globalThis.__ccpatchRuntime.retractions.snapshot(sessionId)`. Snapshots contain
+complete decoded messages, a revision, a stable observed UUID timeline, and
+placement metadata: original index, preceding/following UUIDs, parent UUID, and
+on-disk record index. Display code must merge copies only into its presentation
+model, never into the active conversation. No red-text display is implemented.
+
+Archive records do not go through transcript event persistence or mirror
+callbacks. Normal API requests use only the native active conversation. A tool
+that explicitly reads the transcript, an external backup, or a raw-file upload
+can still expose its contents. Archives increase local disk and memory use.
+With an injected V5 backend, copies remain in memory only and native disk purge
+continues. The patch does not send archive records to that backend: upstream
+provides no way to prove that it is local. Same-file archival is enabled only
+for direct local transcript storage.
+
+Local replacement uses a private temporary file and atomic rename inside the
+native serialized write queue. A synchronous final file check and rename prevent
+same-process metadata appends from interleaving with replacement; changed files
+are retried up to three times. This does not lock out other processes.
+Archive write failures retain the in-memory
+copy and fall back to native deletion, rather than keeping a normal message
+that could return to context. This is best-effort persistence, not a guarantee
+against process crashes, disk failure, or concurrent external writers.
+
 ## Development and validation
 
 ```sh

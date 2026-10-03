@@ -129,10 +129,55 @@ def _launch(match: re.Match[str]) -> str:
     return source[: handoff.start()] + _handoff(handoff) + source[handoff.end() :]
 
 
+def _native_handoff(match: re.Match[str]) -> str:
+    # Import here to avoid a cycle with the patch catalog.
+    from .patches import PatchError
+
+    source = match.group(0)
+    handoffs = list(
+        re.finditer(
+            rf'let {_ID}={_ID}\({_ID}\),(?P<extra>{_ID})=(?P<forward>{_ID})\({_ID}\);'
+            rf'if\({_ID}\("tengu_bg_leftarrow_inprocess",!0\)\)try\{{return await '
+            rf'{_ID}\({_ID},{_ID},\{{dispatchDefaults:{_ID},dispatchExtraArgs:(?P=extra),'
+            rf'.{{0,700}}?args:\["agents",\.\.\.(?P=extra),\.\.\.{_ID}\({_ID}\)\]',
+            source,
+        )
+    )
+    if len(handoffs) != 1:
+        raise PatchError(f"expected one native agents handoff, got {len(handoffs)}")
+    forward = handoffs[0].group('forward')
+    definitions = list(
+        re.finditer(
+            rf'function {re.escape(forward)}\((?P<context>{_ID})\)\{{return {_ID}\('
+            rf'\{{\.\.\.{_ID}\({_ID}\(\)\)\.config,addDir:{_ID}\((?P=context)\),'
+            rf'settingSources:{_ID}\(\)\}}\)\}}',
+            source,
+        )
+    )
+    if len(definitions) != 1:
+        raise PatchError(
+            "native agents handoff no longer forwards parsed configuration"
+        )
+    return source
+
+
 def agents_view_handoff(version: Version | None) -> PatchSet:
     # Import here to avoid a cycle with the patch catalog.
     from .patches import Patch, PatchSet
 
+    if version is not None and version >= (2, 1, 288):
+        return PatchSet(
+            name="agents-view-handoff",
+            patches=(
+                Patch(
+                    "verify-native-agents-launch-config",
+                    re.compile(r"\A[\s\S]+\Z"),
+                    _native_handoff,
+                ),
+            ),
+            min_version=(2, 1, 288),
+            requires_version=True,
+        )
     legacy = version is not None and version < (2, 1, 195)
     return PatchSet(
         name="agents-view-handoff",

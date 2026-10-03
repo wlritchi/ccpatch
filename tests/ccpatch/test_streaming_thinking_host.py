@@ -199,13 +199,23 @@ def test_thinking_renders_before_block_completion(tmp_path: Path) -> None:
     )
     output = bytearray()
     start = time.monotonic()
+    typed_at: float | None = None
     submitted = False
     try:
         assert process.stdin is not None
         assert process.stdout is not None
         while time.monotonic() - start < 45:
-            if not submitted and time.monotonic() - start > 4:
-                process.stdin.write(b'Think briefly then say done.\r')
+            if typed_at is None and time.monotonic() - start > 4:
+                process.stdin.write(b'Think briefly then say done.')
+                process.stdin.flush()
+                typed_at = time.monotonic()
+            # Send Enter separately so the terminal does not treat it as pasted text.
+            if (
+                typed_at is not None
+                and not submitted
+                and time.monotonic() - typed_at > 1
+            ):
+                process.stdin.write(b'\r')
                 process.stdin.flush()
                 submitted = True
             if select.select([process.stdout], [], [], 0.1)[0]:

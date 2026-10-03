@@ -26,7 +26,7 @@ def _replace(source: str, pattern: str, replacement: str, name: str) -> str:
 
 
 def patch_retractions(source: str) -> str:
-    """Patch the verified 2.1.274 and 2.1.280 persistence and eviction paths."""
+    """Patch the verified 2.1.274, 2.1.280, and 2.1.288 eviction paths."""
     remove = re.search(
         rf'async function (?P<remove>{_ID})\(e,n\)\{{let r=(?P<flag>{_ID})\(\)&&n!==void 0\?n:void 0;await (?P<writer>{_ID})\(\)\.removeMessageByUuid\(e,r\)\}}',
         source,
@@ -82,8 +82,8 @@ def patch_retractions(source: str) -> str:
     )
     source = _replace(
         source,
-        r'async removeMessageByUuid\(e,n\)\{return this\.trackWrite\(async\(\)=>\{let r=this\.sessionFile;if\(r===null\)return;return this\.enqueueRemove\(r,e,n\)\}\)\}',
-        f'async removeMessageByUuid(e,n){{if(this.shouldSkipPersistence())return;return this.trackWrite(async()=>{{let r=this.sessionFile;if(r===null){{let _ccEntry={_ARCHIVE}.pending(this.store.getSessionId(),e);if(_ccEntry){{this.pendingEntries=this.pendingEntries.filter((_ccPending)=>_ccPending.entry.uuid!==e&&_ccPending.entry.originalUuid!==e);if(n===void 0)this.pendingEntries.push({{entry:_ccEntry,storageV5:n}});else console.error("ccpatch: V5 disk archival unsupported; retaining memory copy")}}return}}return this.enqueueRemove(r,e,n)}})}}',
+        r'async removeMessageByUuid\(e,n\)\{return this\.trackWrite\(async\(\)=>\{let r=this\.sessionFile;if\(r===null\)return;return (?P<invalidate>this\.replaySources\.delete\(r\),this\.queuedToolResults\.clear\(\),)?this\.enqueueRemove\(r,e,n\)\}\)\}',
+        f'async removeMessageByUuid(e,n){{if(this.shouldSkipPersistence())return;return this.trackWrite(async()=>{{let r=this.sessionFile;if(r===null){{let _ccEntry={_ARCHIVE}.pending(this.store.getSessionId(),e);if(_ccEntry){{this.pendingEntries=this.pendingEntries.filter((_ccPending)=>_ccPending.entry.uuid!==e&&_ccPending.entry.originalUuid!==e);if(n===void 0)this.pendingEntries.push({{entry:_ccEntry,storageV5:n}});else console.error("ccpatch: V5 disk archival unsupported; retaining memory copy")}}return}}return \\g<invalidate>this.enqueueRemove(r,e,n)}})}}',
         'pending transcript archive',
     )
     source = _replace(
@@ -94,14 +94,14 @@ def patch_retractions(source: str) -> str:
     )
     source = _replace(
         source,
-        r'this.performRemoveByUuid\(e,B.removeUuid,B.storageV5\)',
-        'this.performRemoveByUuid(e,B.removeUuid,B.storageV5,B.ccpatchSessionId)',
+        rf'this\.performRemoveByUuid\(e,(?P<entry>{_ID})\.removeUuid,(?P=entry)\.storageV5\)',
+        r'this.performRemoveByUuid(e,\g<entry>.removeUuid,\g<entry>.storageV5,\g<entry>.ccpatchSessionId)',
         'queued archive session dispatch',
     )
     source = _replace(
         source,
-        r'async performRemoveByUuid\(e,n,r\)\{let s=r!==void 0\?(?P<key>[\w$]+)\(e\):void 0;',
-        'async performRemoveByUuid(e,n,r,_ccSession=this.store.getSessionId()){let s=r!==void 0?\\g<key>(e):void 0;if(r===void 0)try{await __ccpatchRetractionStorage.replace(e,_ccSession,n);return}catch(_ccError){console.error("ccpatch: retraction archive write failed; retaining native purge",_ccError.message)}else console.error("ccpatch: V5 disk archival unsupported; retaining memory copy");',
+        rf'async performRemoveByUuid\(e,n,r\)\{{(?P<lock>using {_ID}=await {_ID}\(e\);)?let (?P<storage_key>{_ID})=r!==void 0\?(?P<key>{_ID})\(e\):void 0;',
+        'async performRemoveByUuid(e,n,r,_ccSession=this.store.getSessionId()){\\g<lock>let \\g<storage_key>=r!==void 0?\\g<key>(e):void 0;if(r===void 0)try{await __ccpatchRetractionStorage.replace(e,_ccSession,n);return}catch(_ccError){console.error("ccpatch: retraction archive write failed; retaining native purge",_ccError.message)}else console.error("ccpatch: V5 disk archival unsupported; retaining memory copy");',
         'serialized archive conversion',
     )
     source = _replace(
@@ -135,13 +135,13 @@ def patch_retractions(source: str) -> str:
         'archive mirror exclusion',
     )
     resume = re.search(
-        rf'if\(y\)\{{if\({_ID}\(y\)\)y=await {_ID}\(y,\{{onTranscriptUnreadable:\((?P<error>{_ID})\)=>\{{{_ID}=(?P=error)\}},storageV5:r.storageV5\}}\);',
+        rf'if\((?P<transcript>{_ID})\)\{{if\({_ID}\((?P=transcript)\)\)(?P=transcript)=await {_ID}\((?P=transcript),\{{onTranscriptUnreadable:\((?P<error>{_ID})\)=>\{{{_ID}=(?P=error)\}},storageV5:r.storageV5\}}\);',
         source,
     )
     if resume is None:
         raise RetractionPatchError('missing resolved transcript resume hook')
     key = re.search(
-        r'async performRemoveByUuid\(e,n,r,_ccSession=this.store.getSessionId\(\)\)\{let s=r!==void 0\?([\w$]+)\(e\)',
+        rf'async performRemoveByUuid\(e,n,r,_ccSession=this.store.getSessionId\(\)\)\{{(?:using {_ID}=await {_ID}\(e\);)?let {_ID}=r!==void 0\?({_ID})\(e\)',
         source,
     )
     assert key is not None
@@ -149,7 +149,7 @@ def patch_retractions(source: str) -> str:
         source,
         re.escape(resume[0]),
         resume[0]
-        + f'if(y.fullPath)try{{await __ccpatchRetractionStorage.restore(y.fullPath,{remove["flag"]}()?r.storageV5:void 0,{key[1]}(y.fullPath))}}catch{{console.error("ccpatch: retraction archive restore failed")}}',
+        + f'if({resume["transcript"]}.fullPath)try{{await __ccpatchRetractionStorage.restore({resume["transcript"]}.fullPath,{remove["flag"]}()?r.storageV5:void 0,{key[1]}({resume["transcript"]}.fullPath))}}catch{{console.error("ccpatch: retraction archive restore failed")}}',
         'resume full archive scan',
     )
     anchor = re.search(r'async performRemoveByUuid\(', source)

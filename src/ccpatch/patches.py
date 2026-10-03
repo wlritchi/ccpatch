@@ -321,7 +321,7 @@ STREAMING_THINKING = _StreamingThinkingPatchSet(
         Patch(
             name="define-streaming-thinking-preview",
             pattern=re.compile(
-                rf'function {_ID}\({_ID}\)\{{let {_ID}={_ID}\(40\),{_ID},{_ID},{_ID};'
+                rf'function {_ID}\({_ID}\)\{{let {_ID}={_ID}\((?:40|44)\),{_ID},{_ID},{_ID};'
                 rf'(?=if\([^;]+\)\(\{{source:)'
             ),
             replacement="",
@@ -354,7 +354,7 @@ STREAMING_THINKING = _StreamingThinkingPatchSet(
             pattern=re.compile(
                 rf'(?P<jsx>{_ID})\((?P<provider>{_ID})\.Provider,\{{value:'
                 rf'(?P<stream>{_ID}),children:\[(?P<children>{_ID},{_ID},{_ID})\]\}}\)'
-                rf'(?=,{_ID}\[35\]=)'
+                rf'(?=,{_ID}\[(?:35|39)\]=)'
             ),
             replacement=(
                 r'\g<jsx>(\g<provider>.Provider,{value:\g<stream>,children:'
@@ -580,7 +580,9 @@ _PROVIDER_ENV_SNAPSHOT = re.compile(
     rf'(?P<normalization>if\((?P<boolean_keys>{_ID})\.has\((?P=key)\)\)\{{'
     rf'if\((?P<truthy>{_ID})\((?P=value)\)\)(?P=result)\[(?P=key)\]="1";continue\}})?'
     rf'if\((?P=value)===""&&(?P=key)!=="CLAUDE_SECURESTORAGE_CONFIG_DIR"\)continue;'
-    rf'(?P=result)\[(?P=key)\]=(?P=value)\}}return (?P=result)\}}'
+    rf'(?P=result)\[(?P=key)\]=(?P=value)\}}'
+    rf'(?P<lineage>if\({_ID}\(\)\)(?P=result)\.CLAUDE_CODE_HOST_GATEWAY_LINEAGE="1";)?'
+    rf'return (?P=result)\}}'
 )
 _PROVIDER_ENV_SCHEMA = re.compile(
     rf'(?<![\w$])(?:(?P<schema>{_ID})\.object|(?P<object>{_ID}))\(\{{proto:(?P<proto>{_ID}),op:'
@@ -594,7 +596,7 @@ _PROVIDER_ENV_PERSISTED_DEFAULT = re.compile(
     rf'(?P=options)\?\.providerEnv\?\?(?P<snapshot>{_ID})\(\),'
 )
 _PROVIDER_ENV_SOCKET = re.compile(
-    rf'(?<![\w$])(?P<call>{_ID})\(\{{proto:(?P<proto>{_ID}),op:"dispatch",d:'
+    rf'(?<![\w$])(?:(?P<call>{_ID})\(|(?P<stored>let {_ID}=))\{{proto:(?P<proto>{_ID}),op:"dispatch",d:'
     rf'\{{\.\.\.(?P<job>{_ID}),nonce:(?P<nonce>[^}}]+)\}},timeoutMs:5000,'
     rf'auth:await (?P<auth>{_ID})\(\)\}}'
 )
@@ -602,6 +604,7 @@ _PROVIDER_ENV_AGENTS_FALLBACK = re.compile(
     rf'if\((?P<gate>{_ID})\("tengu_bg_leftarrow_inprocess",!0\)\)'
     rf'try\{{return await (?P<inprocess>{_ID})\((?P<job>{_ID}),'
     rf'(?P<context>{_ID}),\{{(?:\.\.\.{_ID}\(\)&&\{{dispatchExtraArgs:\["--restricted"\]\}},)?dispatchDefaults:(?P<defaults>{_ID})'
+    rf'(?:,dispatchExtraArgs:{_ID})?'
     rf'(?:,\.\.\.(?P<selection>{_ID})\?\.autoOpenJobId!==void 0&&'
     rf'\{{autoOpenJobId:(?P=selection)\.autoOpenJobId\}})?'
     rf'(?:,originSpawn:{_ID})?(?:,storageV5:{_ID})?(?:,credentials:{_ID})?'
@@ -609,7 +612,7 @@ _PROVIDER_ENV_AGENTS_FALLBACK = re.compile(
     rf'(?:,dispatchExtraArgs:[^{{}}]{{1,500}})?\}}\)\}}'
     rf'catch\((?P<error>{_ID})\)\{{(?P<log>{_ID})\((?P=error)\)\}}'
     rf'(?:return |let {_ID}=await )(?P<spawn>{_ID})\(\{{args:\["agents",'
-    rf'\.\.\.(?P<serialize>{_ID})\((?P=defaults)\)'
+    rf'(?:\.\.\.{_ID},)?\.\.\.(?P<serialize>{_ID})\((?P=defaults)\)'
     rf'(?:,\.\.\.(?:_ccAgentsDispatchArgs|globalThis\.__ccpatchRuntime\.agentsHandoff\.dispatchArgs)\(\))?\],'
     rf'env:\{{CLAUDE_AGENTS_SELECT:'
     rf'(?(selection)(?P=selection)\?\.autoOpenJobId\?\?)(?P=job),'
@@ -739,7 +742,7 @@ _PROVIDER_ENV_CLAIMED_ENTRY = re.compile(
     rf'(?P<prefix>async function (?P<entry>{_ID})\((?P<claim>{_ID}),(?P<main>{_ID})\)'
     rf'\{{.{{0,1500}}?Object\.assign\(process\.env,(?:(?P=claim)\.env|{_ID})\),'
     rf'process\.argv=.{{0,600}}?);let\{{main:(?P<worker_main>{_ID})\}}='
-    rf'await (?P=main);await (?P=worker_main)\(\)\}}'
+    rf'await (?P=main);(?P<timing>{_ID}\("spare_claim_apply_ms",performance\.now\(\)-{_ID},{_ID}\),)?await (?P=worker_main)\(\)\}}'
 )
 _PROVIDER_ENV_PREACTION_START = re.compile(
     rf'(?P<hook>\.hook\("preAction",async\((?P<command>{_ID}),(?P<action>{_ID})\)'
@@ -1019,7 +1022,9 @@ def _replace_provider_snapshot(match: re.Match[str]) -> str:
             if match.group("normalization")
             else ""
         )
-        + f"{result}[{key}]={value}===void 0?null:{value}}}return {result}}}"
+        + f"{result}[{key}]={value}===void 0?null:{value}}}"
+        + (match.group("lineage") or "")
+        + f"return {result}}}"
     )
 
 
@@ -1057,7 +1062,8 @@ def _replace_provider_socket(match: re.Match[str]) -> str:
     snapshot["snapshot"] = _provider_snapshot_reference(match, snapshot["snapshot"])
     version = _PROVIDER_ENV_PROTOCOL_VERSION
     return (
-        f'{match.group("call")}({{proto:{match.group("proto")},op:"dispatch",'
+        (match.group("stored") or f'{match.group("call")}(')
+        + f'{{proto:{match.group("proto")},op:"dispatch",'
         f'd:{{...{match.group("job")},nonce:{match.group("nonce")}}},'
         f'providerEnvVersion:{version},providerEnv:{snapshot["snapshot"]}(),'
         f'timeoutMs:5000,auth:await {match.group("auth")}()}}'
@@ -1214,6 +1220,7 @@ def _replace_provider_claimed_entry(match: re.Match[str]) -> str:
         prefix
         + f";let{{main:{match.group('worker_main')}}}=await {match.group('main')};"
         + _provider_final_apply("_ccProviderWorkerEnv")
+        + (match.group("timing") or "")
         + f"await {match.group('worker_main')}()}}"
     )
 
@@ -1893,7 +1900,9 @@ def _provider_env_198_overrides(patches: tuple[Patch, ...]) -> dict[str, Patch]:
                 rf"\.\.\.(?P<env>{_ID})\}}={_ID}\.providerEnv\?\?\{{\}};"
                 rf"if\((?P<host>{_ID})\)for\(let (?P<key>{_ID}) of {_ID}\)"
                 rf"delete (?P=env)\[(?P=key)\];let {_ID}=(?P=host)\?"
-                rf'\{{\.\.\.(?P=env),CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST:"1"\}}:'
+                rf'\{{\.\.\.(?P=env),CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST:"1"'
+                rf'(?:,\.\.\.{_ID}\.gateway&&\{{CLAUDE_CODE_USE_GATEWAY:"1"\}},'
+                rf'\.\.\.{_ID}\.lineage&&\{{CLAUDE_CODE_HOST_GATEWAY_LINEAGE:"1"\}})?\}}:'
                 rf"(?P=env),"
             ),
             replacement=(
@@ -2053,7 +2062,8 @@ def _provider_serialized_keys(source: str) -> str:
     """Resolve native constant lists without executing module initializers."""
     modules = source_modules(source)
     snapshot = _PROVIDER_ENV_SNAPSHOT.search(source)
-    assert snapshot is not None
+    if snapshot is None:
+        raise PatchError("provider snapshot absent")
     snapshot_module = next(m for m in modules if m.start <= snapshot.start() < m.end)
     active: set[tuple[str, str]] = set()
 
@@ -2176,9 +2186,17 @@ def _provider_env_207(base: PatchSet) -> PatchSet:
                     rf'\)\),(?P=scope)\)\)\))\}}'
                     rf'|filterSettingsEnv\((?P<method_env>{_ID}),(?P<method_scope>{_ID})\)'
                     rf'\{{return (?P<method_native>[^;{{}}]+)\}}'
+                    rf'|filterSettingsEnv\((?P<tracked_env>{_ID}),(?P<tracked_scope>{_ID})\)'
+                    rf'\{{(?P<tracked_body>if\(this\.withholdsEnvFrom\((?P=tracked_scope)\)\)return\{{\}};'
+                    rf'let {_ID}=[\s\S]{{0,2000}}?this\.userTierNames\.add\({_ID}\.toUpperCase\(\)\);return {_ID})\}}'
+                    rf'(?=isSettingsSourcedEnvValue\()'
                 ),
                 lambda m: (
-                    f'filterSettingsEnv({m.group("method_env")},{m.group("method_scope")})'
+                    f'filterSettingsEnv({m.group("tracked_env")},{m.group("tracked_scope")})'
+                    f'{{_ccProviderValidateManaged({m.group("tracked_env")},{m.group("tracked_scope")});'
+                    f'return _ccProviderFilterSettings((()=>{{{m.group("tracked_body")}}})(),{m.group("tracked_scope")})}}'
+                    if m.group("tracked_env")
+                    else f'filterSettingsEnv({m.group("method_env")},{m.group("method_scope")})'
                     f'{{_ccProviderValidateManaged({m.group("method_env")},{m.group("method_scope")});'
                     f'return _ccProviderFilterSettings({m.group("method_native")},{m.group("method_scope")})}}'
                     if m.group("method_env")
@@ -2235,7 +2253,9 @@ def _provider_env_207(base: PatchSet) -> PatchSet:
             ),
             Patch(
                 "avoid-provider-reset-after-claimed-entry",
-                re.compile(r'_ccProviderApplyWorkerFinal\(\);(?=await [\w$]+\(\)\})'),
+                re.compile(
+                    rf'_ccProviderApplyWorkerFinal\(\);(?=(?:{_ID}\("spare_claim_apply_ms",performance\.now\(\)-{_ID},{_ID}\),)?await {_ID}\(\)\}})'
+                ),
                 '',
             ),
             Patch(
@@ -2909,7 +2929,7 @@ _MULTI_PROVIDER_THINKING_FILTER = re.compile(
 _MULTI_PROVIDER_NONSTREAMING = re.compile(
     rf'let (?P<response>{_ID})=await (?P<client>{_ID})\.beta\.messages\.create\('
     rf'(?P<request>\{{\.\.\.(?P<finalized>{_ID}),(?:model:(?P<normalize>[\w$]+)\((?P=finalized)\.model\)|stream:!1)\}}|{_ID}),'
-    rf'(?P<options>\{{signal:(?P<signal>{_ID})\.signal,timeout:(?P<timeout>{_ID}),'
+    rf'(?P<options>\{{signal:(?P<signal>{_ID}\.signal|AbortSignal\.any\(\[{_ID}\.signal,{_ID}\.signal\]\)),timeout:(?P<timeout>{_ID}),'
     rf'\.\.\.Object\.keys\((?P<headers>{_ID})\)\.length>0&&\{{headers:(?P=headers)\}}\}})'
 )
 _MULTI_PROVIDER_STREAMING = re.compile(
@@ -2995,8 +3015,9 @@ def _recognize_provider_catalog(source: str) -> str:
 _MULTI_PROVIDER_UNKNOWN_WINDOW = re.compile(
     rf'(?P<prefix>if\({_ID}\(\)&&!{_ID}\.'
     rf'CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT&&)'
-    rf'(?P<native>!{_ID}\((?P<model>{_ID}),{_ID}\)&&!{_ID}\((?P=model)\)'
-    rf'&&!{_ID}&&!{_ID}\((?P=model),{_ID}\))'
+    rf'(?P<native>!(?:{_ID}\((?P<model>{_ID}),{_ID}\)|{_ID}\.optIn1mHonored)'
+    rf'&&!{_ID}\((?P<window_model>{_ID})\)'
+    rf'&&!{_ID}&&!(?:{_ID}\((?P=window_model),{_ID}\)|{_ID}\.recognized))'
     rf'(?=\)return\{{window:{_ID},configured:{_ID},source:"unknown-model"\}})'
 )
 
@@ -3017,7 +3038,7 @@ def _recognize_provider_window(source: str) -> str:
         source,
         match.group(0),
         match.group("prefix")
-        + f"_ccMultiProviderCatalogInfo({match.group('model')})===null&&"
+        + f"_ccMultiProviderCatalogInfo({match.group('model') or match.group('window_model')})===null&&"
         + match.group("native"),
         context="provider unknown model window",
     )
@@ -3149,7 +3170,15 @@ def _install_anthropic_accounts(source: str) -> str:
         rf'fetchOptions:(?P<fn>{_ID})\(\{{forAnthropicAPI:!0,',
         source[start : tail.start()],
     )
-    if headers is None or user_agent is None or transport is None:
+    user_agent_expression = f'{user_agent["fn"]}()' if user_agent else None
+    if headers is None or user_agent is None:
+        generic = re.search(
+            rf'{_ID}=\{{\.\.\.(?P<generic>{_ID})\(\),\.\.\.{_ID},',
+            source[start : tail.start()],
+        )
+        if generic is not None:
+            user_agent_expression = f'{generic["generic"]}()["User-Agent"]'
+    if user_agent_expression is None or transport is None:
         raise PatchError("numbered Anthropic accounts: native client headers changed")
     # Use a fresh generic client before the primary account refresh or cloud login.
     injection = (
@@ -3158,7 +3187,7 @@ def _install_anthropic_accounts(source: str) -> str:
         'apiKey:null,authToken:null,baseURL:"https://api.anthropic.com",maxRetries:0,'
         'dangerouslyAllowBrowser:!0,timeout:Number(process.env.API_TIMEOUT_MS)||600000,'
         f'fetchOptions:{transport["fn"]}({{forAnthropicAPI:!1,url:"https://api.anthropic.com"}}),'
-        f'defaultHeaders:{{"x-app":"cli","User-Agent":{user_agent["fn"]}()}}}});'
+        f'defaultHeaders:{{"x-app":"cli","User-Agent":{user_agent_expression}}}}});'
         f"_ccNativeClient._ccAccountFetch={args['fetchOverride']};return _ccNativeClient}}"
     )
     source = source[: start + head.end()] + injection + source[start + head.end() :]
@@ -3298,7 +3327,7 @@ def _surface_multi_provider_count_tokens_error(match: re.Match[str]) -> str:
     prefix = match.group("prefix")
     model_arg = match.group("model_arg")
     model_pattern = re.compile(
-        rf"let (?P<effective>{_ID})={re.escape(model_arg)}\?\?(?P<default>{_ID})\(\)"
+        rf"let (?P<effective>{_ID})=(?P<expression>(?:{_ID}\()?{re.escape(model_arg)}\?\?(?P<default>{_ID})\(\)(?:\))?)"
     )
     bindings = discover_identifiers(prefix, (model_pattern,))
     callback_try = "async()=>{try{"
@@ -3308,8 +3337,7 @@ def _surface_multi_provider_count_tokens_error(match: re.Match[str]) -> str:
     # Keep the native local binding. Copy its value into the catch scope.
     prefix = model_pattern.sub(
         lambda _: (
-            f"let {bindings['effective']}=_ccEffectiveModel="
-            f"{model_arg}??{bindings['default']}()"
+            f"let {bindings['effective']}=_ccEffectiveModel={bindings['expression']}"
         ),
         prefix,
         count=1,
@@ -3729,7 +3757,7 @@ def _thread_modern_attribution(source: str) -> str:
         -1
     ].start()
     effective = _attribution_match(
-        rf"(?:\{{(?:commit:{_ID},pr:{_ID}|pr:{_ID},commit:{_ID})\}}=|let {_ID}=)(?:await )?(?P<name>{_ID})\(\)",
+        rf"(?:\{{(?:commit:{_ID},pr:{_ID}|pr:{_ID},commit:{_ID})\}}=|(?:let |,){_ID}=)(?:await )?(?P<name>{_ID})\(\)",
         text[start:position],
     ).group("name")
     modern = re.search(
@@ -4215,7 +4243,7 @@ THINKING_SUMMARIES_NONINTERACTIVE_198 = PatchSet(
             pattern=re.compile(
                 rf'(function {_ID}\((?P<thinking>{_ID}),\{{useExactTools:{_ID},'
                 rf'forwardSubagentText:{_ID},isAsync:{_ID},isNonInteractiveSession:{_ID},'
-                rf'sessionDisplayExplicit:{_ID}\}}\)\{{if\()'
+                rf'sessionDisplayExplicit:{_ID}(?:,isRemoteWorker:{_ID})?\}}\)\{{if\()'
             ),
             replacement="",
             identifiers=(
@@ -4449,7 +4477,8 @@ MODEL_SESSION_ONLY = PatchSet(
             name="remove-model-picker-default-action",
             pattern=re.compile(
                 rf'(onSelect:{_ID},)onSetDefault:\({_ID}\)=>'
-                rf'\{{{_ID}\.current=!0\}},(?=onCancel:{_ID},isStandaloneCommand:!0,skipSettingsWrite:!0)'
+                rf'\{{(?:if\({_ID}\({_ID}\)!==null\)return;)?{_ID}\.current=!0\}},'
+                rf'(?=onCancel:{_ID},isStandaloneCommand:!0,(?:skipSettingsWrite:!0|showFastModeNotice:))'
             ),
             replacement=(
                 r'\1headerText:"Switch between Claude models. Your pick applies to this session only. '

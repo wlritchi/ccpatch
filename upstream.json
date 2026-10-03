@@ -1,21 +1,21 @@
 {
-  "version": "2.1.280",
+  "version": "2.1.288",
   "sources": {
     "x86_64-linux": {
       "platform": "linux-x64",
-      "hash": "sha512-dJHWFrDSIZ26hdLucnK3ehLmzdzYl3MsPC1RzUctAUaYnZlH5kfAZxnK8qYRAQ89GX3OPrLsnFdt/QnP+0Ck6Q=="
+      "hash": "sha512-m80cJZimlKjRiwveadPgAfubhbmwa2nF85gg20WbjnHl6QKMad0bXiMp6JNcPeSZsr0N1KJ/wkR34rRoiyyYyg=="
     },
     "aarch64-linux": {
       "platform": "linux-arm64",
-      "hash": "sha512-zB4oqrFwimkV/FmBOkVxvv8iYgsuDSp7/MY8uYTns4SCE4DwdHz58X1cO1sgqLnCR96A0oU7Yirov1Uk3iGKAA=="
+      "hash": "sha512-sP12YSgo3CQw4gM+C0AaIAHawW1xN4j2OKlGZFobFE2UG5eMRVQslQug8bXuVsldI1F+HT3vvfRNB3mdDge18A=="
     },
     "aarch64-darwin": {
       "platform": "darwin-arm64",
-      "hash": "sha512-ctkNgja8Yi2kngVFPO2667k6zbtJwjQ+dOTeEp1XmzHcoDFdaee4h4WVgZllsewm/Io+pPPPSFQVdGHOtdE/1A=="
+      "hash": "sha512-kioqJixZJY87Dgoog1VAHxPo+5h0XrDTRFLmZzRKxfjfEGF6aKv+Zt1OqJUfeUnD3+VUr+iqemRZ5vPTg2gGeQ=="
     },
     "x86_64-darwin": {
       "platform": "darwin-x64",
-      "hash": "sha512-991qNyZVC/ra6THRMLDJ1mB1a+/C/bpKEA1w5ttNJA0mTvVm012kAbS3Pf7zrvRBFe7fU1KeHkGlTTq49519qA=="
+      "hash": "sha512-TvTqr4BwW6oV4gJ9pJNmYy8AprYGfRA4EuIQn8GIavNCPr5ptjF3xW/WZz/5iUpBfHL5kb2hWbRLQuUXNavaeQ=="
     }
   }
 }

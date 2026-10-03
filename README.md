@@ -51,6 +51,13 @@ preferences. Set `programs.ccpatch.proxy.enable = false` to manage the service
 separately. `programs.ccpatch.proxy.environment` accepts non-secret settings such
 as `CC_OPENAI_AUTH_FILE`; do not put credentials in Nix values or the Nix store.
 
+## Session-only model selection
+
+On Claude Code 2.1.280 and later, `/model` and `/model <name>` change the current
+session without updating the default model in settings. The picker also keeps
+an effort adjustment local to the session. To change the model for new sessions,
+edit the `model` setting directly.
+
 ## Additional Anthropic accounts
 
 Set `CLAUDE_CODE_OAUTH_TOKEN_1`, `CLAUDE_CODE_OAUTH_TOKEN_2`, and so on to tokens

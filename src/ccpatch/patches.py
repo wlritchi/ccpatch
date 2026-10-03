@@ -4431,6 +4431,36 @@ AUTO_MODE_LOCAL_FALLBACK = PatchSet(
 )
 
 
+MODEL_SESSION_ONLY = PatchSet(
+    name="model-session-only",
+    min_version=(2, 1, 280),
+    requires_version=True,
+    patches=(
+        Patch(
+            name="keep-model-command-session-only",
+            pattern=re.compile(
+                rf'(let (?P<save>{_ID})=)!{_ID}\(\)'
+                rf'(?=;{_ID}\(null\);let {_ID}={_ID}\('
+                rf'{_ID},{_ID},\(\)=>{_ID}\.getState\(\),{_ID},(?P=save),"command",)'
+            ),
+            replacement=r"\1!1",
+        ),
+        Patch(
+            name="remove-model-picker-default-action",
+            pattern=re.compile(
+                rf'(onSelect:{_ID},)onSetDefault:\({_ID}\)=>'
+                rf'\{{{_ID}\.current=!0\}},(?=onCancel:{_ID},isStandaloneCommand:!0,skipSettingsWrite:!0)'
+            ),
+            replacement=(
+                r'\1headerText:"Switch between Claude models. Your pick applies to this session only. '
+                'For other/previous model names, specify with --model.",'
+            ),
+        ),
+    ),
+    verify_present=(re.compile(re.escape("Your pick applies to this session only.")),),
+)
+
+
 def _select_patch_variant(
     version: Version | None, base: PatchSet, variant: PatchSet
 ) -> PatchSet:
@@ -4473,6 +4503,7 @@ def default_patch_sets(version: Version | None) -> list[PatchSet]:
         ),
         COMPACT_SESSION,
         *([STREAMING_THINKING] if STREAMING_THINKING.applies_to(version) else []),
+        *([MODEL_SESSION_ONLY] if MODEL_SESSION_ONLY.applies_to(version) else []),
         *([RETRACTION_ARCHIVE] if RETRACTION_ARCHIVE.applies_to(version) else []),
         *(
             [AUTO_MODE_LOCAL_FALLBACK]

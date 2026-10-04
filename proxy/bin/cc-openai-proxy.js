@@ -25,7 +25,7 @@ import { loadProxyToken, proxyAuthDiagnostic, resolveProxyAuthConfig } from "./p
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 17780;
 const DEFAULT_PROVIDER = "openai-codex";
-const DEFAULT_MODEL = "gpt-6-sol";
+const DEFAULT_MODEL = "gpt-6.1-sol";
 const DEFAULT_FABLE_MODEL = "gpt-6-astra";
 const DEFAULT_SONNET_MODEL = "gpt-5.6-terra";
 const DEFAULT_HAIKU_MODEL = "gpt-6-luna";
@@ -48,6 +48,7 @@ const TOKENIZER_ENCODING_BY_MODEL = Object.freeze({
   "gpt-6-astra": "o200k_base",
   "gpt-6-luna": "o200k_base",
   "gpt-6-sol": "o200k_base",
+  "gpt-6.1-sol": "o200k_base",
 });
 
 let accountPoolPromise;

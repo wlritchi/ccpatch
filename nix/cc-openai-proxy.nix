@@ -18,7 +18,7 @@ buildNpmPackage {
       ../proxy/package-lock.json
     ];
   };
-  npmDepsHash = "sha256-3gxlINNFynYsRoKZAwVLzy+fVWCOGGkefMa0KXHErSo=";
+  npmDepsHash = "sha256-Ynl3bIT9/oiIlqor7SGCyGypijvomFcXxutA/OIZZws=";
   nodejs = nodejs_24;
 
   dontNpmBuild = true;

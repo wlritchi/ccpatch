@@ -120,7 +120,7 @@ test("assertInboundAuth enforces the loaded bearer via either header", () => {
 });
 
 test("probeOpenAiAuth resolves a real descriptor and shares an in-flight probe", async () => {
-  const model = { id: "gpt-6-sol", provider: "openai-codex" };
+  const model = { id: "gpt-6.1-sol", provider: "openai-codex" };
   let calls = 0;
   let resolveAuth;
   const auth = new Promise((resolve) => {
@@ -129,7 +129,7 @@ test("probeOpenAiAuth resolves a real descriptor and shares an in-flight probe",
   const load = async () => ({
     getModel(provider, id) {
       assert.equal(provider, "openai-codex");
-      assert.equal(id, "gpt-6-sol");
+      assert.equal(id, "gpt-6.1-sol");
       return model;
     },
     async getAuth(argument) {
@@ -231,6 +231,7 @@ test("probeOpenAiAuth accepts the installed pi-ai Models API shape", async () =>
     ],
   });
   for (const [id, cost] of [
+    ["gpt-6.1-sol", { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 }],
     ["gpt-6-sol", { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 }],
     ["gpt-6-luna", { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 }],
   ]) {

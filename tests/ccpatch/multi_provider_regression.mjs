@@ -197,7 +197,7 @@ assert.deepEqual(
   ["WebFetch", "Read", "mcp__docs__search"],
 );
 
-assert.equal(api.catalog.length, 16);
+assert.equal(api.catalog.length, 17);
 assert.ok(api.catalog.every(({ value }) => !value.startsWith("kimi:")));
 assert.equal(api.catalogInfo("kimi:kimi-k3"), api.catalogInfo("moonshot:kimi-k3"));
 assert.equal(api.catalogInfo("moonshot:kimi-k3").description, "Moonshot general-purpose model");
@@ -211,6 +211,7 @@ assert.equal(api.toolAllowed("kimi:kimi-k3", { name: "WebSearch" }), false);
 for (const [model, label, domain] of [
   ["openai:gpt-5.6-sol", "GPT-5.6 Sol", "openai.com"],
   ["openai:gpt-6-astra", "GPT-6 Astra", "openai.com"],
+  ["openai:gpt-6.1-sol", "GPT-6.1 Sol", "openai.com"],
   ["openai:gpt-6-sol", "GPT-6 Sol", "openai.com"],
   ["openai:gpt-6-luna", "GPT-6 Luna", "openai.com"],
   ["moonshot:kimi-k3", "Kimi K3", "moonshot.ai"],
@@ -238,6 +239,7 @@ const expectedLimits = new Map([
   ["minimax:MiniMax-M3", [1048576, 512000]],
   ["minimax:MiniMax-M2.7", [204800, 131072]],
   ["openai:gpt-6-astra", [272000, 128000]],
+  ["openai:gpt-6.1-sol", [272000, 128000]],
   ["openai:gpt-6-sol", [272000, 128000]],
   ["openai:gpt-6-luna", [272000, 128000]],
   ["openai:gpt-5.6-sol", [272000, 128000]],
@@ -274,7 +276,7 @@ assert.deepEqual(
   Array.from(api.pickerCatalog(), ({ value }) => value),
   [
     "openai:gpt-6-astra",
-    "openai:gpt-6-sol",
+    "openai:gpt-6.1-sol",
     "openai:gpt-6-luna",
     "openai:gpt-5.6-terra",
     "moonshot:kimi-k3",
@@ -284,6 +286,7 @@ assert.deepEqual(
   ],
 );
 for (const hidden of [
+  "openai:gpt-6-sol",
   "openai:gpt-5.6-sol",
   "openai:gpt-5.6-luna",
   "moonshot:kimi-k2.7-code",
@@ -296,7 +299,7 @@ for (const hidden of [
   assert.equal(api.catalogInfo(hidden)?.hidden, true, hidden);
   assert.equal(api.modelInfo(hidden)?.provider, hidden.split(":")[0], hidden);
 }
-assert.equal(api.catalog.filter(({ hidden }) => hidden === true).length, 8);
+assert.equal(api.catalog.filter(({ hidden }) => hidden === true).length, 9);
 delete credentials.CC_ZAI_AUTH_TOKEN;
 delete credentials.CC_MINIMAX_AUTH_TOKEN;
 delete credentials.CC_OPENAI_PROXY_AUTH_TOKEN;
@@ -499,6 +502,8 @@ for (const [model, provider] of [
   ["MiniMax-M2.7", "minimax"],
   ["openai:gpt-6-astra", "openai"],
   ["gpt-6-astra", "openai"],
+  ["openai:gpt-6.1-sol", "openai"],
+  ["gpt-6.1-sol", "openai"],
   ["openai:gpt-6-sol", "openai"],
   ["gpt-6-sol", "openai"],
   ["openai:gpt-6-luna", "openai"],

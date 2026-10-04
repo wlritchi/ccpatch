@@ -2371,7 +2371,22 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                 },
             },
             {
+                "wireModel": "gpt-6.1-sol",
+                "label": "GPT-6.1 Sol",
+                "description": "OpenAI Codex model",
+                "contextWindow": 272_000,
+                "maxOutputTokens": 128_000,
+                "costs": {
+                    "inputTokens": 2,
+                    "outputTokens": 10,
+                    "promptCacheWriteTokens": 2.5,
+                    "promptCacheReadTokens": 0.1,
+                    "webSearchRequests": 0.01,
+                },
+            },
+            {
                 "wireModel": "gpt-6-sol",
+                "hidden": True,
                 "label": "GPT-6 Sol",
                 "description": "OpenAI Codex model",
                 "contextWindow": 272_000,

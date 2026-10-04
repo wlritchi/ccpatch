@@ -1093,6 +1093,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
         '"value":"openai:gpt-6-astra","label":"GPT-6 Astra",'
         '"attributionDomain":"openai.com","description":"OpenAI Codex model"' in patched
     )
+    assert "openai:gpt-6.1-sol" in patched
     assert "openai:gpt-6-sol" in patched
     assert "openai:gpt-6-luna" in patched
     assert "openai:gpt-5.6-sol" in patched
@@ -1104,6 +1105,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
     assert catalog.index('"moonshot:') < catalog.index('"zai:')
     assert catalog.index('"zai:') < catalog.index('"minimax:')
     for hidden_model in (
+        "openai:gpt-6-sol",
         "openai:gpt-5.6-sol",
         "openai:gpt-5.6-luna",
         "moonshot:kimi-k2.7-code",
@@ -1118,6 +1120,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
         assert '"hidden":true' in entry, hidden_model
     for visible_model in (
         "openai:gpt-6-astra",
+        "openai:gpt-6.1-sol",
         "openai:gpt-5.6-terra",
         "moonshot:kimi-k3",
         "zai:glm-5.3-flash",
@@ -1137,6 +1140,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
         '"zai:glm-4.7":{inputTokens:0.6,outputTokens:2.2,',
         '"minimax:minimax-m3":{inputTokens:0.3,outputTokens:1.2,',
         '"openai:gpt-6-astra":{inputTokens:10,outputTokens:50,promptCacheWriteTokens:12.5,promptCacheReadTokens:1,',
+        '"openai:gpt-6.1-sol":{inputTokens:2,outputTokens:10,promptCacheWriteTokens:2.5,promptCacheReadTokens:0.1,',
         '"openai:gpt-6-sol":{inputTokens:2,outputTokens:10,promptCacheWriteTokens:2.5,promptCacheReadTokens:0.2,',
         '"openai:gpt-6-luna":{inputTokens:0.1,outputTokens:0.5,promptCacheWriteTokens:0.125,promptCacheReadTokens:0.01,',
         '"openai:gpt-5.6-sol":{inputTokens:4,outputTokens:20,',

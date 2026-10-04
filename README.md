@@ -27,11 +27,11 @@ Darwin derivation does not validate it on a Mac.
 ## Nix integration
 
 Consumers can pin an immutable release tag, for example
-`github:wlritchi/ccpatch/v2.1.288-ccpatch.1`, once that release is published. The
+`github:wlritchi/ccpatch/v2.1.288-ccpatch.2`, once that release is published. The
 lockfile records the exact commit. A release tag versions the patcher, proxy,
 launcher, and upstream binary together. Never move an existing release tag;
 increment the `ccpatch` revision for another release of the same Claude version.
-The Python package uses the corresponding PEP 440 version `2.1.288.post1`.
+The Python package uses the corresponding PEP 440 version `2.1.288.post2`.
 
 Use `packages.${system}.default` directly, or use `lib.mkPackages pkgs` or
 `overlays.default` to build with the consumer's package set. Consumers of the

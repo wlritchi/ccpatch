@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer, request } from "node:http";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -297,6 +297,77 @@ test("errorType maps status classes for the Anthropic error envelope", () => {
   assert.equal(errorType(403), "authentication_error");
   assert.equal(errorType(400), "invalid_request_error");
   assert.equal(errorType(404), "invalid_request_error");
+});
+
+test("server loads an external Secret once and requires a restart after rotation", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "cc-openai-proxy-external-test-"));
+  const source = join(directory, "secret");
+  const path = join(directory, "token");
+  const token = 'external+/=token"with\\\\punctuation';
+  await writeFile(source, `${token}\r\n`, { mode: 0o644 });
+  await symlink(source, path);
+  const proxyPath = fileURLToPath(new URL("../bin/cc-openai-proxy.js", import.meta.url));
+  for (const [args, expectedToken] of [
+    [["--auth-token-source-file", path], token],
+    [[], "rotated-token"],
+  ]) {
+    const port = await unusedPort();
+    const child = spawn(
+      process.execPath,
+      [proxyPath, "--host", "127.0.0.1", "--port", String(port), ...args],
+      {
+        env: {
+          ...process.env,
+          CC_OPENAI_PROXY_AUTH_FILE: undefined,
+          CC_OPENAI_PROXY_AUTH_SOURCE_FILE: path,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let output = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => {
+      output += chunk;
+    });
+    t.after(async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      child.kill();
+      await once(child, "exit");
+    });
+    await new Promise((resolve, reject) => {
+      child.stderr.on("data", () => {
+        if (output.includes('"category":"server_started"')) resolve();
+      });
+      child.once("exit", (code) =>
+        reject(new Error(`proxy exited before startup with code ${code}: ${output}`)),
+      );
+      child.once("error", reject);
+    });
+    assert.equal((await get(port, "/health", "localhost")).status, 200);
+    assert.equal((await get(port, "/", "localhost")).status, 401);
+    for (const headers of [
+      { authorization: `Bearer ${expectedToken}` },
+      { "x-api-key": expectedToken },
+    ]) {
+      assert.equal((await get(port, "/", "localhost", headers)).status, 200);
+    }
+    if (expectedToken === token) {
+      await writeFile(source, "rotated-token\n");
+      assert.equal(
+        (await get(port, "/", "localhost", { authorization: `Bearer ${token}` })).status,
+        200,
+      );
+      assert.equal(
+        (await get(port, "/", "localhost", { authorization: "Bearer rotated-token" })).status,
+        401,
+      );
+    }
+    assert.equal(output.includes(token), false);
+    child.kill();
+    await once(child, "exit");
+  }
+  assert.equal((await lstat(path)).isSymbolicLink(), true);
+  assert.equal(await readFile(source, "utf8"), "rotated-token\n");
 });
 
 test("server creates a bearer before listen and gates all routes except health", async (t) => {

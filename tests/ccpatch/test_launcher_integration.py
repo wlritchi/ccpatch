@@ -53,8 +53,9 @@ def capability_server() -> Iterator[tuple[str, list[str]]]:
         thread.join(timeout=5)
 
 
+@pytest.mark.parametrize("token", ["test-bearer", 'test+/=bearer"with\\backslash'])
 def test_launcher_accepts_authenticated_proxy(
-    launcher: Path, capability_server: tuple[str, list[str]]
+    launcher: Path, capability_server: tuple[str, list[str]], token: str
 ) -> None:
     url, requests = capability_server
     result = subprocess.run(  # noqa: S603 - Explicit opt-in build output.
@@ -62,7 +63,7 @@ def test_launcher_accepts_authenticated_proxy(
         env={
             **os.environ,
             "CC_OPENAI_PROXY_URL": url,
-            "CC_OPENAI_PROXY_AUTH_TOKEN": "test-bearer",
+            "CC_OPENAI_PROXY_AUTH_TOKEN": token,
             "DISABLE_AUTOUPDATER": "1",
         },
         capture_output=True,
@@ -71,7 +72,7 @@ def test_launcher_accepts_authenticated_proxy(
     )
     assert result.returncode == 0, result.stderr
     assert "Claude Code" in result.stdout
-    assert requests == ["Bearer test-bearer"]
+    assert requests == [f"Bearer {token}"]
 
 
 def test_launcher_rejects_explicit_proxy_without_token(launcher: Path) -> None:

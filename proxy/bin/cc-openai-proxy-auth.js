@@ -1,21 +1,28 @@
 #!/usr/bin/env node
-import { loadOrCreateProxyToken, proxyAuthDiagnostic, resolveProxyAuthPath } from "./proxy-auth.js";
+import { loadProxyToken, proxyAuthDiagnostic, resolveProxyAuthConfig } from "./proxy-auth.js";
 
 function usage() {
-  return `usage: cc-openai-proxy-auth [--auth-token-file PATH]
+  return `usage: cc-openai-proxy-auth [--auth-token-file PATH | --auth-token-source-file PATH]
 
 Environment:
-  CC_OPENAI_PROXY_AUTH_FILE  Proxy bearer file (platform default when unset)
+  CC_OPENAI_PROXY_AUTH_FILE         Managed proxy bearer file (platform default when unset)
+  CC_OPENAI_PROXY_AUTH_SOURCE_FILE  Existing external bearer file (read only; follows symlinks)
+
+The file options are mutually exclusive. A CLI file option overrides both environment variables.
 `;
 }
 
 function parseArgs(argv) {
   let authTokenFile;
+  let authTokenSourceFile;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--auth-token-file") {
       authTokenFile = argv[++i];
       if (!authTokenFile) throw new Error("auth token file must not be empty");
+    } else if (arg === "--auth-token-source-file") {
+      authTokenSourceFile = argv[++i];
+      if (!authTokenSourceFile) throw new Error("auth token source file must not be empty");
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(usage());
       return undefined;
@@ -23,18 +30,17 @@ function parseArgs(argv) {
       throw new Error(`unknown argument: ${arg}`);
     }
   }
-  if (authTokenFile === "") throw new Error("auth token file must not be empty");
-  return resolveProxyAuthPath(authTokenFile);
+  return resolveProxyAuthConfig(authTokenFile, authTokenSourceFile);
 }
 
 async function main() {
-  const path = parseArgs(process.argv.slice(2));
-  if (path === undefined) return;
+  const config = parseArgs(process.argv.slice(2));
+  if (config === undefined) return;
   try {
-    const token = await loadOrCreateProxyToken(path);
+    const token = await loadProxyToken(config);
     process.stdout.write(`${token}\n`);
   } catch (error) {
-    error.authPath = path;
+    error.authPath = config.authTokenFile;
     throw error;
   }
 }

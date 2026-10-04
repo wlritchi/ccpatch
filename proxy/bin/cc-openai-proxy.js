@@ -20,7 +20,7 @@ import {
   parsePlanCapacity,
   rateLimitHeaders,
 } from "./codex-accounts.js";
-import { loadOrCreateProxyToken, proxyAuthDiagnostic, resolveProxyAuthPath } from "./proxy-auth.js";
+import { loadProxyToken, proxyAuthDiagnostic, resolveProxyAuthConfig } from "./proxy-auth.js";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 17780;
@@ -56,7 +56,8 @@ let authProbePromise;
 const processSessionId = `cc-openai-${randomUUID()}`;
 
 function usage() {
-  return `usage: cc-openai-proxy [--host HOST] [--port PORT] [--auth-token-file PATH]
+  return `usage: cc-openai-proxy [--host HOST] [--port PORT]
+                       [--auth-token-file PATH | --auth-token-source-file PATH]
 
 Environment:
   CC_OPENAI_MODEL            Override all requested models
@@ -69,9 +70,13 @@ Environment:
   CC_OPENAI_PLAN_CAPACITY    Relative plan capacities, e.g. "plus=1,pro=20"
   CC_OPENAI_USAGE_TTL_MS     Age before a Codex usage snapshot is refreshed (300000)
   CC_OPENAI_USAGE_HEADERS    Set to 0 to omit usage headers on successful responses
-  CC_OPENAI_PROXY_AUTH_FILE  Proxy bearer file (platform default when unset)
+  CC_OPENAI_PROXY_AUTH_FILE  Managed proxy bearer file (platform default when unset)
+  CC_OPENAI_PROXY_AUTH_SOURCE_FILE  Existing external bearer file (read only; follows symlinks)
   CC_OPENAI_TRANSPORT        pi-ai transport: auto, sse, websocket, websocket-cached
   CC_OPENAI_CACHE_RETENTION  pi-ai cache retention: short, long, none
+
+The file options are mutually exclusive. A CLI file option overrides both environment variables.
+Tokens are loaded at startup. Restart the proxy after token rotation.
 `;
 }
 
@@ -79,8 +84,9 @@ function parseArgs(argv) {
   const config = {
     host: process.env.CC_OPENAI_PROXY_HOST || DEFAULT_HOST,
     port: Number.parseInt(process.env.CC_OPENAI_PROXY_PORT || String(DEFAULT_PORT), 10),
-    authTokenFile: process.env.CC_OPENAI_PROXY_AUTH_FILE,
   };
+  let authTokenFile;
+  let authTokenSourceFile;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -89,8 +95,11 @@ function parseArgs(argv) {
     } else if (arg === "--port") {
       config.port = Number.parseInt(argv[++i], 10);
     } else if (arg === "--auth-token-file") {
-      config.authTokenFile = argv[++i];
-      if (!config.authTokenFile) throw new Error("auth token file must not be empty");
+      authTokenFile = argv[++i];
+      if (!authTokenFile) throw new Error("auth token file must not be empty");
+    } else if (arg === "--auth-token-source-file") {
+      authTokenSourceFile = argv[++i];
+      if (!authTokenSourceFile) throw new Error("auth token source file must not be empty");
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(usage());
       process.exit(0);
@@ -103,9 +112,7 @@ function parseArgs(argv) {
   if (!Number.isInteger(config.port) || config.port <= 0 || config.port > 65535) {
     throw new Error(`invalid port: ${config.port}`);
   }
-  if (config.authTokenFile === "") throw new Error("auth token file must not be empty");
-  config.authTokenFile = resolveProxyAuthPath(config.authTokenFile);
-  return config;
+  return { ...config, ...resolveProxyAuthConfig(authTokenFile, authTokenSourceFile) };
 }
 
 // Register only openai-codex to use its generated catalog and OAuth support.
@@ -1620,7 +1627,7 @@ async function main() {
   const config = parseArgs(process.argv.slice(2));
   let expectedBearer;
   try {
-    expectedBearer = await loadOrCreateProxyToken(config.authTokenFile);
+    expectedBearer = await loadProxyToken(config);
   } catch (error) {
     error.authPath = config.authTokenFile;
     throw error;

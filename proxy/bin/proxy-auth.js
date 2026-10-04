@@ -6,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 
 const DIRECTORY_MODE = 0o700;
 const FILE_MODE = 0o600;
-const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const INVALID_TOKEN_CHARACTER = /[^\x21-\x7e]/;
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{0,31}$/;
 
 function authError(category, message) {
@@ -33,8 +33,21 @@ function defaultProxyAuthPath(env = process.env, os = platform(), home = homedir
   return join(stateHome, "cc-openai-proxy", "auth-token");
 }
 
-function resolveProxyAuthPath(explicitPath, env = process.env) {
-  return explicitPath || env.CC_OPENAI_PROXY_AUTH_FILE || defaultProxyAuthPath(env);
+function resolveProxyAuthConfig(authTokenFile, authTokenSourceFile, env = process.env) {
+  if (authTokenFile === undefined && authTokenSourceFile === undefined) {
+    authTokenFile = env.CC_OPENAI_PROXY_AUTH_FILE;
+    authTokenSourceFile = env.CC_OPENAI_PROXY_AUTH_SOURCE_FILE;
+  }
+  if (authTokenFile !== undefined && authTokenSourceFile !== undefined) {
+    throw authError("configuration_error", "proxy auth file options are mutually exclusive");
+  }
+  if (authTokenFile === "" || authTokenSourceFile === "") {
+    throw authError("configuration_error", "proxy auth file path must not be empty");
+  }
+  return {
+    authTokenFile: authTokenSourceFile ?? authTokenFile ?? defaultProxyAuthPath(env),
+    externalAuthToken: authTokenSourceFile !== undefined,
+  };
 }
 
 function assertOwned(stat, description) {
@@ -57,15 +70,37 @@ async function ensureSecureParent(path) {
 }
 
 function validateToken(token) {
-  if (!TOKEN_PATTERN.test(token)) {
+  if (typeof token !== "string" || token.length === 0 || INVALID_TOKEN_CHARACTER.test(token)) {
     throw authError("malformed_token", "proxy auth token is empty or malformed");
   }
   return token;
 }
 
 function parseTokenFile(contents) {
-  const token = contents.endsWith("\n") ? contents.slice(0, -1) : contents;
+  const token = contents.endsWith("\r\n")
+    ? contents.slice(0, -2)
+    : contents.endsWith("\n")
+      ? contents.slice(0, -1)
+      : contents;
   return validateToken(token);
+}
+
+async function readExternalToken(path) {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  try {
+    if (!(await handle.stat()).isFile()) {
+      throw authError("file_type_error", "proxy auth token source is not a regular file");
+    }
+    return parseTokenFile(await handle.readFile("utf8"));
+  } finally {
+    await handle.close();
+  }
+}
+
+async function loadProxyToken(config) {
+  return config.externalAuthToken
+    ? readExternalToken(config.authTokenFile)
+    : loadOrCreateProxyToken(config.authTokenFile);
 }
 
 async function readSecureToken(path) {
@@ -151,8 +186,10 @@ async function loadOrCreateProxyToken(path) {
 export {
   defaultProxyAuthPath,
   loadOrCreateProxyToken,
+  loadProxyToken,
   proxyAuthDiagnostic,
+  readExternalToken,
   readSecureToken,
-  resolveProxyAuthPath,
+  resolveProxyAuthConfig,
   validateToken,
 };

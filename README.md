@@ -155,10 +155,52 @@ For a separately managed proxy, set both `CC_OPENAI_PROXY_URL` and
 the launcher does not silently fall back. Use TLS or a trusted local tunnel when
 the proxy is not on localhost.
 
+### Proxy bearer files
+
 The local bearer is stored in
 `${XDG_STATE_HOME:-$HOME/.local/state}/cc-openai-proxy/auth-token` on Linux, or
-`~/Library/Application Support/cc-openai-proxy/auth-token` on macOS. The
-`cc-openai-proxy-auth` helper creates it with private permissions.
+`~/Library/Application Support/cc-openai-proxy/auth-token` on macOS. The proxy and
+`cc-openai-proxy-auth` helper create a random 32-byte token if the file is absent.
+For this **managed** mode, the immediate parent directory must be owned by the
+current user with mode `0700`; the regular token file must have the same owner
+and mode `0600`. Neither may be a symlink. Invalid existing files are rejected,
+not repaired or replaced. Select another managed path with `--auth-token-file`
+or `CC_OPENAI_PROXY_AUTH_FILE`.
+
+For Kubernetes Secrets and other **externally managed** credentials, use an
+existing file instead:
+
+```sh
+cc-openai-proxy --host 0.0.0.0 --auth-token-source-file /run/secrets/proxy-auth/token
+# Alternatively, set CC_OPENAI_PROXY_AUTH_SOURCE_FILE to that path.
+```
+
+External mode reads the file without creating, chmodding, or replacing it. It
+allows symlinks (including Kubernetes Secret-volume links), different ownership,
+and read-only or group-readable modes. The resolved source must be a readable
+regular file. Missing or invalid sources stop startup; there is no fallback to a
+managed token. The deployment is responsible for access control: use a read-only
+Secret mount and restrict access with the pod's UID/group configuration. Do not
+put secrets in images or the Nix store. Protect non-local connections with TLS or
+a trusted tunnel and restrict network access to the proxy.
+
+Both modes accept a nonempty token of any length made of printable ASCII
+characters without whitespace. One final LF or CRLF is allowed; other line breaks,
+control characters, and non-ASCII bytes are rejected. Use a high-entropy token;
+acceptance does not guarantee strength. Generation remains 32 random bytes encoded
+as 43 base64url characters.
+
+The managed and external options are mutually exclusive. A CLI file option
+selects the mode and overrides both environment variables; without a CLI option,
+setting both variables is an error. The helper supports the same options and
+prints the token to stdout. The managed Claude Code launcher continues to use the
+platform-default managed file, regardless of these environment variables. Clients
+of a separately managed proxy still need `CC_OPENAI_PROXY_URL` and
+`CC_OPENAI_PROXY_AUTH_TOKEN`.
+
+The proxy loads either token file **once, before listening**. Restart the proxy
+(or roll out new pods) after Secret rotation and update clients to use the new
+token. A Kubernetes volume update alone does not change the in-memory token.
 
 ### Tool call IDs
 

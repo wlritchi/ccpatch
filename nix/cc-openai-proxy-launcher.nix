@@ -78,8 +78,8 @@ writeText "cc-openai-proxy-launcher.sh" ''
     cc_openai_proxy_probe_result=transport
     cc_openai_proxy_response="$(${coreutils}/bin/mktemp)" || return 1
     cc_openai_proxy_http_code="$({
-      printf 'header = "Authorization: Bearer %s"\n' "$cc_openai_proxy_token"
-    } | ${curl}/bin/curl --config - --silent --max-time 2 \
+      printf 'Authorization: Bearer %s\n' "$cc_openai_proxy_token"
+    } | ${curl}/bin/curl --header @- --silent --max-time 2 \
       --output "$cc_openai_proxy_response" --write-out '%{http_code}' \
       "$cc_openai_proxy_base_url/capabilities" 2>/dev/null)" || {
       ${coreutils}/bin/rm -f "$cc_openai_proxy_response"

@@ -34,12 +34,25 @@ from .retractions import RetractionPatchError, patch_retractions
 Version = tuple[int, ...]
 
 
+class LongPromptCosts(TypedDict):
+    # A request whose input, cache-read, and cache-write tokens together exceed
+    # this count is priced entirely at this tier.
+    abovePromptTokens: int
+    inputTokens: float
+    outputTokens: float
+    promptCacheWriteTokens: float
+    promptCacheReadTokens: float
+    webSearchRequests: float
+
+
 class ModelCosts(TypedDict):
     inputTokens: float
     outputTokens: float
     promptCacheWriteTokens: float
     promptCacheReadTokens: float
     webSearchRequests: float
+    # Claude Code 2.1.301 prices this tier natively. Older versions ignore it.
+    longPrompt: NotRequired[LongPromptCosts]
 
 
 ModelCostsByModel = dict[str, ModelCosts]
@@ -2328,13 +2341,28 @@ def _model_costs_patch(model_costs: ModelCostsByModel) -> Patch:
     # Claude Code lowercases model IDs before cost lookup. Use normalized qualified IDs.
     # Keep native entries and the catalogue spread last so native prices take precedence.
     # Do not add provider IDs to the native catalogue's validation set.
+    def entry(costs: ModelCosts) -> str:
+        long_prompt = costs.get("longPrompt")
+        tier = (
+            ""
+            if long_prompt is None
+            else f",longPrompt:{{abovePromptTokens:{long_prompt['abovePromptTokens']},"
+            f"inputTokens:{long_prompt['inputTokens']},"
+            f"outputTokens:{long_prompt['outputTokens']},"
+            f"promptCacheWriteTokens:{long_prompt['promptCacheWriteTokens']},"
+            f"promptCacheReadTokens:{long_prompt['promptCacheReadTokens']},"
+            f"webSearchRequests:{long_prompt['webSearchRequests']}}}"
+        )
+        return (
+            f"{{inputTokens:{costs['inputTokens']},"
+            f"outputTokens:{costs['outputTokens']},"
+            f"promptCacheWriteTokens:{costs['promptCacheWriteTokens']},"
+            f"promptCacheReadTokens:{costs['promptCacheReadTokens']},"
+            f"webSearchRequests:{costs['webSearchRequests']}{tier}}}"
+        )
+
     table = ",".join(
-        f"{json.dumps(model.lower(), separators=(',', ':'))}:"
-        f"{{inputTokens:{costs['inputTokens']},"
-        f"outputTokens:{costs['outputTokens']},"
-        f"promptCacheWriteTokens:{costs['promptCacheWriteTokens']},"
-        f"promptCacheReadTokens:{costs['promptCacheReadTokens']},"
-        f"webSearchRequests:{costs['webSearchRequests']}}}"
+        f"{json.dumps(model.lower(), separators=(',', ':'))}:{entry(costs)}"
         for model, costs in model_costs.items()
     )
 
@@ -2368,6 +2396,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 12.5,
                     "promptCacheReadTokens": 1,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 20,
+                        "outputTokens": 75,
+                        "promptCacheWriteTokens": 25,
+                        "promptCacheReadTokens": 2,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
             {
@@ -2382,6 +2418,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 2.5,
                     "promptCacheReadTokens": 0.1,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 4,
+                        "outputTokens": 15,
+                        "promptCacheWriteTokens": 5,
+                        "promptCacheReadTokens": 0.2,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
             {
@@ -2397,6 +2441,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 2.5,
                     "promptCacheReadTokens": 0.2,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 4,
+                        "outputTokens": 15,
+                        "promptCacheWriteTokens": 5,
+                        "promptCacheReadTokens": 0.4,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
             {
@@ -2411,6 +2463,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 0.125,
                     "promptCacheReadTokens": 0.01,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 0.2,
+                        "outputTokens": 0.75,
+                        "promptCacheWriteTokens": 0.25,
+                        "promptCacheReadTokens": 0.02,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
             {
@@ -2426,6 +2486,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 5,
                     "promptCacheReadTokens": 0.4,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 8,
+                        "outputTokens": 30,
+                        "promptCacheWriteTokens": 10,
+                        "promptCacheReadTokens": 0.8,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
             {
@@ -2440,6 +2508,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 2.5,
                     "promptCacheReadTokens": 0.2,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 4,
+                        "outputTokens": 18,
+                        "promptCacheWriteTokens": 5,
+                        "promptCacheReadTokens": 0.4,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
             {
@@ -2455,6 +2531,14 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                     "promptCacheWriteTokens": 0.25,
                     "promptCacheReadTokens": 0.02,
                     "webSearchRequests": 0.01,
+                    "longPrompt": {
+                        "abovePromptTokens": 272_000,
+                        "inputTokens": 0.4,
+                        "outputTokens": 1.8,
+                        "promptCacheWriteTokens": 0.5,
+                        "promptCacheReadTokens": 0.04,
+                        "webSearchRequests": 0.01,
+                    },
                 },
             },
         ),
@@ -2616,9 +2700,19 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                 "costs": {
                     "inputTokens": 0.3,
                     "outputTokens": 1.2,
-                    "promptCacheWriteTokens": 0.375,
+                    # M3 uses passive caching with no extra write charge: writes cost the input price.
+                    # Source: https://platform.minimax.io/docs/api-reference/text-prompt-caching.md
+                    "promptCacheWriteTokens": 0.3,
                     "promptCacheReadTokens": 0.06,
                     "webSearchRequests": 0,
+                    "longPrompt": {
+                        "abovePromptTokens": 512_000,
+                        "inputTokens": 0.6,
+                        "outputTokens": 2.4,
+                        "promptCacheWriteTokens": 0.6,
+                        "promptCacheReadTokens": 0.12,
+                        "webSearchRequests": 0,
+                    },
                 },
             },
             {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from .module_runtime import register_module_bootstrap
@@ -17,7 +18,12 @@ class RetractionPatchError(RuntimeError):
     """An upstream retraction anchor changed."""
 
 
-def _replace(source: str, pattern: str, replacement: str, name: str) -> str:
+def _replace(
+    source: str,
+    pattern: str,
+    replacement: str | Callable[[re.Match[str]], str],
+    name: str,
+) -> str:
     compiled = re.compile(pattern)
     matches = list(compiled.finditer(source))
     if len(matches) != 1:
@@ -26,7 +32,7 @@ def _replace(source: str, pattern: str, replacement: str, name: str) -> str:
 
 
 def patch_retractions(source: str) -> str:
-    """Patch the verified 2.1.274, 2.1.280, and 2.1.288 eviction paths."""
+    """Patch the verified 2.1.274, 2.1.280, 2.1.288, and 2.1.301 eviction paths."""
     remove = re.search(
         rf'async function (?P<remove>{_ID})\(e,n\)\{{let r=(?P<flag>{_ID})\(\)&&n!==void 0\?n:void 0;await (?P<writer>{_ID})\(\)\.removeMessageByUuid\(e,r\)\}}',
         source,
@@ -70,19 +76,25 @@ def patch_retractions(source: str) -> str:
     )
     source = _replace(
         source,
-        rf'(?P<prefix>function {_ID}\((?P<uuid>{_ID})\)\{{)(?P<search>let {_ID}=r\.findLastIndex\(\((?P<row>{_ID})\)=>(?P=row)\.uuid===(?P=uuid)\);)(?=if\()',
-        rf'\g<prefix>{remove["remove"]}(\g<uuid>,s,r.findLast((_ccRow)=>_ccRow.uuid===\g<uuid>)??e.findLast((_ccRow)=>_ccRow.uuid===\g<uuid>),r,n);\g<search>',
+        rf'(?P<head>function {_ID}\(\{{conversation:(?P<conversation>{_ID}),messages:(?P<messages>{_ID}),'
+        rf'persistSession:(?P<persist>{_ID}),storageV5:(?P<storage>{_ID})\}}\)\{{.{{0,1500}}?)'
+        rf'(?P<prefix>function {_ID}\((?P<uuid>{_ID})\)\{{)'
+        rf'(?P<search>let {_ID}=(?P=messages)\.findLastIndex\(\((?P<row>{_ID})\)=>(?P=row)\.uuid===(?P=uuid)\);)(?=if\()',
+        rf'\g<head>\g<prefix>{remove["remove"]}(\g<uuid>,\g<storage>,'
+        r'\g<messages>.findLast((_ccRow)=>_ccRow.uuid===\g<uuid>)??'
+        r'\g<conversation>.findLast((_ccRow)=>_ccRow.uuid===\g<uuid>),'
+        r'\g<messages>,\g<persist>);\g<search>',
         'SDK capture before eviction',
     )
     source = _replace(
         source,
-        rf'({_ID}\("tengu_tombstone_persisted_removal",\{{message_type:{_ID}\({_ID}.type\)\}}\)),{remove["remove"]}\({_ID},s\)',
+        rf'({_ID}\("tengu_tombstone_persisted_removal",\{{message_type:{_ID}\({_ID}.type\)\}}\)),{remove["remove"]}\({_ID},{_ID}\)',
         r'\1',
         'SDK duplicate removal',
     )
     source = _replace(
         source,
-        r'async removeMessageByUuid\(e,n\)\{return this\.trackWrite\(async\(\)=>\{let r=this\.sessionFile;if\(r===null\)return;return (?P<invalidate>this\.replaySources\.delete\(r\),this\.queuedToolResults\.clear\(\),)?this\.enqueueRemove\(r,e,n\)\}\)\}',
+        r'async removeMessageByUuid\(e,n\)\{return this\.trackWrite\(async\(\)=>\{let r=this\.sessionFile;if\(r===null\)return;return (?P<invalidate>(?:this\.replaySources\.delete\(r\)|this\.restartReplayIndex\(r,!0\)),this\.queuedToolResults\.clear\(\),)?this\.enqueueRemove\(r,e,n\)\}\)\}',
         f'async removeMessageByUuid(e,n){{if(this.shouldSkipPersistence())return;return this.trackWrite(async()=>{{let r=this.sessionFile;if(r===null){{let _ccEntry={_ARCHIVE}.pending(this.store.getSessionId(),e);if(_ccEntry){{this.pendingEntries=this.pendingEntries.filter((_ccPending)=>_ccPending.entry.uuid!==e&&_ccPending.entry.originalUuid!==e);if(n===void 0)this.pendingEntries.push({{entry:_ccEntry,storageV5:n}});else console.error("ccpatch: V5 disk archival unsupported; retaining memory copy")}}return}}return \\g<invalidate>this.enqueueRemove(r,e,n)}})}}',
         'pending transcript archive',
     )
@@ -98,10 +110,27 @@ def patch_retractions(source: str) -> str:
         r'this.performRemoveByUuid(e,\g<entry>.removeUuid,\g<entry>.storageV5,\g<entry>.ccpatchSessionId)',
         'queued archive session dispatch',
     )
+    # Since 2.1.301, a diskless launch skips the local rewrite. Do not archive there.
+    diskless = re.search(
+        rf'async performRemoveByUuid\(e,n,r\)\{{[^{{}}]{{0,200}}?'
+        rf'return (?:await )?this\.removeByUuidV5\(r,{_ID},n\);if\((?P<guard>{_ID})\(\)\)return;',
+        source,
+    )
+    local = f'r===void 0&&!{diskless["guard"]}()' if diskless else 'r===void 0'
+
+    def archive_conversion(match: re.Match[str]) -> str:
+        return (
+            'async performRemoveByUuid(e,n,r,_ccSession=this.store.getSessionId()){'
+            f'{match["lock"] or ""}let {match["storage_key"]}=r!==void 0?{match["key"]}(e):void 0;'
+            f'if({local})try{{await __ccpatchRetractionStorage.replace(e,_ccSession,n);return}}'
+            'catch(_ccError){console.error("ccpatch: retraction archive write failed; retaining native purge",_ccError.message)}'
+            'else if(r!==void 0)console.error("ccpatch: V5 disk archival unsupported; retaining memory copy");'
+        )
+
     source = _replace(
         source,
         rf'async performRemoveByUuid\(e,n,r\)\{{(?P<lock>using {_ID}=await {_ID}\(e\);)?let (?P<storage_key>{_ID})=r!==void 0\?(?P<key>{_ID})\(e\):void 0;',
-        'async performRemoveByUuid(e,n,r,_ccSession=this.store.getSessionId()){\\g<lock>let \\g<storage_key>=r!==void 0?\\g<key>(e):void 0;if(r===void 0)try{await __ccpatchRetractionStorage.replace(e,_ccSession,n);return}catch(_ccError){console.error("ccpatch: retraction archive write failed; retaining native purge",_ccError.message)}else console.error("ccpatch: V5 disk archival unsupported; retaining memory copy");',
+        archive_conversion,
         'serialized archive conversion',
     )
     source = _replace(

@@ -16,7 +16,7 @@ async function remove(e,n){let r=flag()&&n!==void 0?n:void 0;await writer().remo
 async function continuation(e,n){let r=flag()&&n!==void 0?n:void 0;if(!(await store().sessionMessages(session(),r)).has(e))return;await writer().removeMessageByUuid(e,r)}
 onTombstone:(msg)=>{if(apply({type:"remove-by-uuid",uuid:msg.uuid}),this.stream.transcriptRetractedUuids.delete(msg.uuid))return;remove(msg.uuid,storage)}
 for(let uuid of ids)apply({type:"remove-by-uuid",uuid:uuid}),this.stream.transcriptRetractedUuids.add(uuid),remove(uuid,storage)
-function evict(uuid){let index=r.findLastIndex((row)=>row.uuid===uuid);if(index<0)return;metric("tengu_tombstone_persisted_removal",{message_type:safe(row.type)}),remove(uuid,s)}
+function sdk({conversation:e,messages:r,persistSession:n,storageV5:s}){let g=0;function evict(uuid){let index=r.findLastIndex((row)=>row.uuid===uuid);if(index<0)return;metric("tengu_tombstone_persisted_removal",{message_type:safe(row.type)}),remove(uuid,s)}}
 async removeMessageByUuid(e,n){return this.trackWrite(async()=>{let r=this.sessionFile;if(r===null)return;return this.replaySources.delete(r),this.queuedToolResults.clear(),this.enqueueRemove(r,e,n)})}
 async performRemoveByUuid(e,n,r){using s=await lock(e);let g=r!==void 0?key(e):void 0;if(r!==void 0)return this.removeByUuidV5(r,g,n);events.push("purge")}
 async removeByUuidV5(){}

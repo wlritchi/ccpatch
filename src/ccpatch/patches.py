@@ -334,7 +334,7 @@ STREAMING_THINKING = _StreamingThinkingPatchSet(
         Patch(
             name="define-streaming-thinking-preview",
             pattern=re.compile(
-                rf'function {_ID}\({_ID}\)\{{let {_ID}={_ID}\((?:40|44)\),{_ID},{_ID},{_ID};'
+                rf'function {_ID}\({_ID}\)\{{let {_ID}={_ID}\(\d+\),{_ID},{_ID},{_ID};'
                 rf'(?=if\([^;]+\)\(\{{source:)'
             ),
             replacement="",
@@ -367,7 +367,7 @@ STREAMING_THINKING = _StreamingThinkingPatchSet(
             pattern=re.compile(
                 rf'(?P<jsx>{_ID})\((?P<provider>{_ID})\.Provider,\{{value:'
                 rf'(?P<stream>{_ID}),children:\[(?P<children>{_ID},{_ID},{_ID})\]\}}\)'
-                rf'(?=,{_ID}\[(?:35|39)\]=)'
+                rf'(?=,{_ID}\[\d+\]=)'
             ),
             replacement=(
                 r'\g<jsx>(\g<provider>.Provider,{value:\g<stream>,children:'
@@ -403,11 +403,13 @@ CHANNELS_ENABLED = PatchSet(
             pattern=re.compile(rf"(?<![\w$.]){_ID}\?\.channelsEnabled!==!0"),
             replacement="!1",
         ),
-        # Force the tengu_harbor feature flag on.
+        # Force the tengu_harbor feature flag on. In 2.1.301 a second read
+        # gates the allow_channels org policy check; that check stays in force.
         Patch(
             name="channelizer",
             pattern=re.compile(rf'(?<![\w$.]){_ID}\("tengu_harbor",!1\)'),
             replacement="!!1",
+            expected_matches=(1, 2),
         ),
     ),
     verify_absent=(
@@ -622,6 +624,8 @@ _PROVIDER_ENV_AGENTS_FALLBACK = re.compile(
     rf'\{{autoOpenJobId:(?P=selection)\.autoOpenJobId\}})?'
     rf'(?:,originSpawn:{_ID})?(?:,storageV5:{_ID})?(?:,credentials:{_ID})?'
     rf'(?:,fleetNudgeStore:(?P=selection)\?\.fleetNudgeStore)?'
+    rf'(?:,\.\.\.(?P=selection)\?\.abortLiveTurn&&\{{abortLiveTurn:'
+    rf'(?P=selection)\.abortLiveTurn,dropLateQueued:{_ID}\}})?'
     rf'(?:,dispatchExtraArgs:[^{{}}]{{1,500}})?\}}\)\}}'
     rf'catch\((?P<error>{_ID})\)\{{(?P<log>{_ID})\((?P=error)\)\}}'
     rf'(?:return |let {_ID}=await )(?P<spawn>{_ID})\(\{{args:\["agents",'
@@ -752,7 +756,8 @@ _PROVIDER_ENV_MANAGER_SPAWN = re.compile(
     rf'\{{afterUpgrade:(?P=after_upgrade)\}}:void 0(?:,(?P=auth_obj)\.storageV5(?:,(?P=auth_obj)\.credentials)?)?\)'
 )
 _PROVIDER_ENV_CLAIMED_ENTRY = re.compile(
-    rf'(?P<prefix>async function (?P<entry>{_ID})\((?P<claim>{_ID}),(?P<main>{_ID})\)'
+    rf'(?P<prefix>async function (?P<entry>{_ID})\((?P<claim>{_ID}),(?P<main>{_ID})'
+    rf'(?P<parameters>(?:,{_ID})*)\)'
     rf'\{{.{{0,1500}}?Object\.assign\(process\.env,(?:(?P=claim)\.env|{_ID})\),'
     rf'process\.argv=.{{0,600}}?);let\{{main:(?P<worker_main>{_ID})\}}='
     rf'await (?P=main);(?P<timing>{_ID}\("spare_claim_apply_ms",performance\.now\(\)-{_ID},{_ID}\),)?await (?P=worker_main)\(\)\}}'
@@ -796,14 +801,18 @@ _PROVIDER_ENV_STATE_WRITE = re.compile(
     rf'\.\.\.(?P<rest>{_ID})\}}=(?(terminal)(?P=terminal)|(?(normalized)(?P=normalized)|(?P=state)))(?P<separator>[;,])'
 )
 _PROVIDER_ENV_STATE_VIEW = re.compile(
-    rf'bgIsolation:(?P<job>{_ID})\.bgIsolation,providerEnv:(?P=job)\.providerEnv,'
+    rf'bgIsolation:(?P<job>{_ID})\.bgIsolation,providerEnv:(?P=job)\.providerEnv'
+    rf'(?:&&{_ID}\((?P=job)\.providerEnv,(?P=job)\.cwd\))?,'
 )
 _PROVIDER_ENV_STATE_SCHEMA = re.compile(
     rf'providerEnv:(?:(?P<schema>{_ID})\.record\((?P=schema)\.string\(\),'
     rf'(?P=schema)\.string\(\)\)|{_ID}\({_ID}\(\),{_ID}\(\)\))\.transform\((?:{_ID}|'
     rf'\((?P<value>{_ID})\)=>\{{let (?P<filtered>{_ID})={_ID}\((?P=value)\);'
     rf'return (?P=filtered)&&{_ID}\((?:{_ID}\((?P=filtered),'
-    rf'"the saved job state \(state.json providerEnv\)"\)|(?P=filtered)),{_ID}\)\}})\)\.optional\(\),'
+    rf'"the saved job state \(state.json providerEnv\)"\)|(?P=filtered)),{_ID}\)\}}|'
+    rf'\((?P<checked>{_ID})\)=>\{{let (?P<kept>{_ID})={_ID}\({_ID}\((?P=checked),{_ID}\)\);'
+    rf'return (?P=kept)&&{_ID}\((?P=kept),'
+    rf'"the saved job state \(state.json providerEnv\)"\)\}})\)\.optional\(\),'
 )
 _PROVIDER_ENV_JOB_COPY = re.compile(rf'providerEnv:(?P<prior>{_ID})\?\.providerEnv,')
 _PROVIDER_ENV_SEED_STATE = re.compile(
@@ -1220,7 +1229,7 @@ def _provider_final_apply(payload: str) -> str:
 def _replace_provider_claimed_entry(match: re.Match[str]) -> str:
     declaration = (
         f"async function {match.group('entry')}({match.group('claim')},"
-        f"{match.group('main')}){{"
+        f"{match.group('main')}{match.group('parameters')}){{"
     )
     prefix = checked_replace(
         match.group("prefix"),
@@ -1826,7 +1835,7 @@ BACKGROUND_PROVIDER_ENV = PatchSet(
                 r'(?P<request>[\w$]+)\.type!=="repaint"\)\{[^\n]*?'
                 r'if\((?P=request)\.type==="shutdown"\)\{'
                 r'(?:'
-                r'[\w$]+\((?:this\.promptInput,)?this\.storageV5\);'
+                r'[\w$]+\((?:this\.(?:promptInput|promptDraftFile),)?this\.storageV5\);'
                 r'|(?:'
                 r'(?P<shutdown>[\w$]+)\(\);return\}'
                 r'if\((?P=request)\.type==="repaint"\)\{[\w$]+\(\);return\}'
@@ -2080,7 +2089,9 @@ def _provider_serialized_keys(source: str) -> str:
     snapshot_module = next(m for m in modules if m.start <= snapshot.start() < m.end)
     active: set[tuple[str, str]] = set()
 
-    def resolve(name: str, module_name: str | None = None) -> list[str]:
+    def resolve(
+        name: str, module_name: str | None = None, provider_keys: bool = False
+    ) -> list[str]:
         scope = next((m for m in modules if m.name == module_name), None)
         identity = (module_name or "", name)
         if identity in active:
@@ -2095,7 +2106,7 @@ def _provider_serialized_keys(source: str) -> str:
             if scope is None or m == scope
             for match in pattern.finditer(m.source)
         ]
-        if scope is None:
+        if scope is None or provider_keys:
             matches = [
                 (m, match)
                 for m, match in matches
@@ -2138,9 +2149,17 @@ def _provider_serialized_keys(source: str) -> str:
         return keys
 
     sources = _provider_key_sources(source)
+    # Other modules can reuse the minified group names for unrelated provider
+    # key sets. Resolve the groups in the module that defines them.
+    selection = re.compile(
+        rf'(?<![\w$.]){re.escape(sources[1])}=\["CLAUDE_CODE_USE_BEDROCK"'
+    )
+    group_modules = [m for m in modules if selection.search(m.source)]
+    if len(group_modules) != 1:
+        raise PatchError("provider group module absent or ambiguous")
     keys = resolve(sources[0], snapshot_module.name)
     for name in sources[1:]:
-        keys.extend(resolve(name))
+        keys.extend(resolve(name, group_modules[0].name, provider_keys=True))
     return json.dumps(list(dict.fromkeys((*keys, *_PROVIDER_ENV_EXPLICIT_KEYS))))
 
 
@@ -2179,7 +2198,7 @@ def _provider_env_207(base: PatchSet) -> PatchSet:
                     rf'(?=[\s\S]{{0,1000}}?Object\.assign\(process\.env,'
                     rf'{_ID}\((?P<settings>{_ID})\({_ID}\)\?\.env,{_ID}\)\))'
                     rf'|(?P<method>apply(?:Safe)?ConfigEnvironmentVariables\(\)\{{)'
-                    rf'(?=[\s\S]{{0,2000}}?this\.filterSettingsEnv\((?P<method_settings>{_ID})\({_ID}\)\?\.env,{_ID}\))'
+                    rf'(?=[\s\S]{{0,2000}}?this\.filterSettingsEnv\((?P<method_settings>{_ID})\({_ID}\)\?\.env,{_ID}[,)])'
                 ),
                 lambda m: (
                     f'{m.group("method")}if(_ccProviderCaptureReady)_ccProviderInitialize({m.group("method_settings")}("policySettings")?.env);'
@@ -2199,13 +2218,16 @@ def _provider_env_207(base: PatchSet) -> PatchSet:
                     rf'\)\),(?P=scope)\)\)\))\}}'
                     rf'|filterSettingsEnv\((?P<method_env>{_ID}),(?P<method_scope>{_ID})\)'
                     rf'\{{return (?P<method_native>[^;{{}}]+)\}}'
-                    rf'|filterSettingsEnv\((?P<tracked_env>{_ID}),(?P<tracked_scope>{_ID})\)'
-                    rf'\{{(?P<tracked_body>if\(this\.withholdsEnvFrom\((?P=tracked_scope)\)\)return\{{\}};'
-                    rf'let {_ID}=[\s\S]{{0,2000}}?this\.userTierNames\.add\({_ID}\.toUpperCase\(\)\);return {_ID})\}}'
-                    rf'(?=isSettingsSourcedEnvValue\()'
+                    rf'|filterSettingsEnv\((?P<tracked_env>{_ID}),(?P<tracked_scope>{_ID})'
+                    rf'(?P<tracked_parameters>(?:,{_ID})*)\)'
+                    rf'\{{(?P<tracked_body>(?:if\(this\.withholdsEnvFrom\((?P=tracked_scope)\)\)return\{{\}};'
+                    rf'let {_ID}=|let {_ID}=this\.keptSettingsEnv\((?P=tracked_env),(?P=tracked_scope),)'
+                    rf'[\s\S]{{0,2000}}?this\.userTierNames\.add\({_ID}\.toUpperCase\(\)\);return {_ID})\}}'
+                    rf'(?=isSettingsSourcedEnvValue\(|withoutInvalidSettingsEnv\()'
                 ),
                 lambda m: (
-                    f'filterSettingsEnv({m.group("tracked_env")},{m.group("tracked_scope")})'
+                    f'filterSettingsEnv({m.group("tracked_env")},{m.group("tracked_scope")}'
+                    f'{m.group("tracked_parameters")})'
                     f'{{_ccProviderValidateManaged({m.group("tracked_env")},{m.group("tracked_scope")});'
                     f'return _ccProviderFilterSettings((()=>{{{m.group("tracked_body")}}})(),{m.group("tracked_scope")})}}'
                     if m.group("tracked_env")
@@ -2941,7 +2963,8 @@ _MULTI_PROVIDER_RESUME = re.compile(
     rf'(?P<dependent>{_ID})\((?(normalized_setting)(?P=normalized_setting)|(?P=setting))\)&&!(?P<eap>{_ID})\((?P=model)\)&&'
     rf'(?P<compatible>{_ID})\((?(normalized_setting)(?P=normalized_setting)|(?P=setting)),(?P<normalize>{_ID})\((?P=model)\)\)\)'
     r'return\{kind:"mode_dependent_setting"\};'
-    rf'(?=let {_ID}=!\([^;]{{1,200}}\)\?"unknown_family":!'
+    # 2.1.301 resolves a served-catalog entry before the family check.
+    rf'(?=let (?:{_ID}={_ID}\((?P=model)\),)?{_ID}=!\([^;]{{1,200}}\)\?"unknown_family":!'
     rf'(?:(?P<exempt>{_ID})\((?P=model)\)&&!)?'
     rf'(?P<allowed>{_ID})\((?P=model)\)\?"not_allowed")'
 )
@@ -3074,6 +3097,8 @@ _MULTI_PROVIDER_COUNT_TOKENS = re.compile(
 _MULTI_PROVIDER_COUNT_TOKENS_CATCH = re.compile(
     rf'(?P<prefix>async function (?P<function>{_ID})\((?P<messages>{_ID}),(?P<tools>{_ID}),'
     rf'(?P<model_arg>{_ID})(?:,{_ID})?\)\{{'
+    # 2.1.301 returns null early for diskless launches.
+    rf'(?:if\({_ID}\(\)\)return null;)?'
     rf'(?:(?P=messages)={_ID}\((?:{_ID}\()?(?P=messages)\)\)?;let (?P<prepared_tools>{_ID})='
     rf'{_ID}\((?P=tools)\);)?return .{{0,200}}?async\(\)=>\{{try\{{.{{0,1800}}?return '
     rf'(?P<response>{_ID})\.input_tokens)\}}catch\((?P<error>{_ID})\)\{{'
@@ -3129,10 +3154,41 @@ _MULTI_PROVIDER_UNKNOWN_WINDOW = re.compile(
     rf'&&!{_ID}&&!(?:{_ID}\((?P=window_model),{_ID}\)|{_ID}\.recognized))'
     rf'(?=\)return\{{window:{_ID},configured:{_ID},source:"unknown-model"\}})'
 )
+# 2.1.301 moves the guard into a helper. The prompt-too-long preemption check
+# also calls the helper, so provider models keep native preemption.
+_MULTI_PROVIDER_UNKNOWN_WINDOW_CALL = re.compile(
+    rf'if\({_ID}\(\)&&!{_ID}\.CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT&&'
+    rf'(?P<helper>{_ID})\({_ID},{_ID}\)\)'
+    rf'return\{{window:{_ID},configured:{_ID},source:"unknown-model"\}}'
+)
+
+
+def _unknown_window_helper(helper: str) -> re.Pattern[str]:
+    return re.compile(
+        rf'(?P<prefix>function {re.escape(helper)}\((?P<info>{_ID}),{_ID}\)\{{return)'
+        rf'(?P<native>!(?P=info)\.optIn1mHonored&&!{_ID}\((?P=info)\.model\)'
+        rf'&&!{_ID}&&!(?P=info)\.recognized\}})'
+    )
 
 
 def _recognize_provider_window(source: str) -> str:
     matches = list(_MULTI_PROVIDER_UNKNOWN_WINDOW.finditer(source))
+    calls = list(_MULTI_PROVIDER_UNKNOWN_WINDOW_CALL.finditer(source))
+    if not matches and len(calls) == 1:
+        helpers = list(_unknown_window_helper(calls[0]["helper"]).finditer(source))
+        if len(helpers) != 1:
+            raise PatchError(
+                "multi-provider-sdk: unknown model window guard absent or ambiguous"
+            )
+        helper = helpers[0]
+        return checked_replace(
+            source,
+            helper.group(0),
+            helper.group("prefix")
+            + f" _ccMultiProviderCatalogInfo({helper.group('info')}.model)===null&&"
+            + helper.group("native"),
+            context="provider unknown model window helper",
+        )
     if (
         not matches
         and "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT" not in source
@@ -3189,12 +3245,14 @@ _MULTI_PROVIDER_TOOL_SCHEMA = re.compile(
     rf'tools:(?P<all_tools>{_ID}),agents:(?P=context)\.agents,'
     rf'allowedAgentTypes:(?P=context)\.allowedAgentTypes,model:(?P<model>{_ID}),'
     rf'(?P<snapshot_fields>(?:proactivityLevel:(?P=context)\.proactivityLevel,)?'
-    rf'(?:enginePlacement:{_ID}\((?P=tool)\)\?"deferred":"listed",)?'
+    rf'(?:enginePlacement:{_ID}\((?P=tool)(?:,{_ID})?\)\?"deferred":"listed",)?'
     rf'(?:(?:querySource:(?P=context)\.querySource,)?'
     rf'(?:withoutToolDescribeHooks:(?P=context)\.withoutToolDescribeHooks,)?'
     rf'recordedDescription:[^;{{}}]{{1,200}},'
-    rf'(?:recordedEntry:[^;{{}}]{{1,200}},)?)?)'
-    rf'deferLoading:(?P<deferred>{_ID})\((?P=tool)\)\}}\)\)\)(?P<delimiter>;|,)'
+    rf'(?:recordedEntry:[^;{{}}]{{1,200}},)?'
+    rf'(?:isRedescribed:[^;{{}}]{{1,200}},)?)?)'
+    rf'deferLoading:(?P<deferred>{_ID})\((?P=tool)\)'
+    rf'(?:,loadedThroughToolSearch:[^;{{}}]{{1,200}})?\}}\)\)\)(?P<delimiter>;|,)'
 )
 _MULTI_PROVIDER_CONTEXT_WINDOW = re.compile(
     rf'(?P<prefix>function (?P<function>{_ID})\((?P<model>{_ID}),(?P<headers>{_ID})\)'
@@ -4486,12 +4544,13 @@ COMPACT_SESSION = PatchSet(
         Patch(
             "force-compaction-on-flag",
             # Match the native skip guard. Its middle predicate can take a normalized model.
+            # 2.1.301 adds a trailing bypass parameter to the guard.
             # Consume the flag before this guard, after the native safety checks.
             # The lookbehind prevents a second application.
             re.compile(
                 r"(?<!=!1,!0;)if\([\w$]+\(\)&&!"
                 r"(?:[\w$]+\((?:[\w$]+\([\w$]+\))?\)&&!)?"
-                r"[\w$]+\([\w$]+,[\w$]+\)\)return!1"
+                r"[\w$]+\([\w$]+,[\w$]+\)(?:&&![\w$]+)?\)return!1"
             ),
             _force_compact,
         ),
@@ -4577,7 +4636,9 @@ MODEL_SESSION_ONLY = PatchSet(
             name="keep-model-command-session-only",
             pattern=re.compile(
                 rf'(let (?P<save>{_ID})=)!{_ID}\(\)'
-                rf'(?=;{_ID}\(null\);let {_ID}={_ID}\('
+                # 2.1.301 wraps the save call in a closure and also sends saved
+                # picks through the config.set hook. A session-only pick skips both.
+                rf'(?=;{_ID}\(null\);(?:let {_ID}=!1;let {_ID}=\(\)=>\{{)?let {_ID}={_ID}\('
                 rf'{_ID},{_ID},\(\)=>{_ID}\.getState\(\),{_ID},(?P=save),"command",)'
             ),
             replacement=r"\1!1",

@@ -58,6 +58,29 @@ session without updating the default model in settings. The picker also keeps
 an effort adjustment local to the session. To change the model for new sessions,
 edit the `model` setting directly.
 
+## Background low-memory threshold
+
+On Claude Code 2.1.274 and later, the background daemon retires idle background
+workers while free memory stays below a threshold. If memory stays low, it then
+retires pinned workers too. The threshold comes from a remote flag. The default
+is 1024 MB. Environment variables do not change the flag. If the free memory of
+a host or container is always below the threshold, the daemon retires idle and
+pinned workers every few minutes.
+
+Set `CC_BG_LOW_MEM_MB` to replace the threshold, in MB. A value of `0` or less
+disables the guard. If the variable is unset, empty, or not a number, the daemon
+uses the flag threshold. On macOS the guard uses memory pressure, not free
+memory, so only a value of `0` or less has an effect there.
+
+```sh
+export CC_BG_LOW_MEM_MB=256  # retire workers only below 256 MB free
+export CC_BG_LOW_MEM_MB=0    # never retire workers for low memory
+```
+
+The daemon reads the variable from its own process environment. Set it in the
+shell environment of the session that starts the daemon. A daemon that is
+already running keeps the value it started with.
+
 ## Additional Anthropic accounts
 
 Set `CLAUDE_CODE_OAUTH_TOKEN_1`, `CLAUDE_CODE_OAUTH_TOKEN_2`, and so on to tokens

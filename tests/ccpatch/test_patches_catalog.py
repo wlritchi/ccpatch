@@ -1544,7 +1544,7 @@ def test_198_variants_are_narrowly_selected() -> None:
             assert patch_set.applies_to((2, 1, 280))
             assert patch_set.max_version is None
     sets = default_patch_sets((2, 1, 274))
-    assert len(sets) == 11
+    assert len(sets) == 12
     assert sets[9] is RETRACTION_ARCHIVE
     assert sets[10] is AUTO_MODE_LOCAL_FALLBACK
     assert all(patch_set.applies_to((2, 1, 274)) for patch_set in sets)

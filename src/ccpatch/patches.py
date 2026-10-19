@@ -4660,6 +4660,43 @@ MODEL_SESSION_ONLY = PatchSet(
 )
 
 
+# The background daemon retires idle workers, and then pinned workers, while
+# free memory stays below a flag threshold. On hosts or containers whose free
+# memory is always below that threshold, this occurs every few minutes. The flag
+# client ignores environment overrides, so the threshold has no local control.
+# Read the threshold from the environment first. Ignore a value that is not a
+# number: NaN would make the free-memory comparison false and disable the guard
+# without notice. A value of zero or less disables the guard through the native
+# check. On macOS, the native check uses memory pressure, not this threshold.
+BG_LOW_MEM_ENV = "CC_BG_LOW_MEM_MB"
+
+BACKGROUND_LOW_MEMORY_THRESHOLD = PatchSet(
+    name="background-low-memory-threshold",
+    patches=(
+        Patch(
+            name="read-low-memory-threshold-from-environment",
+            pattern=re.compile(
+                rf"(function {_ID}\(\)\{{let (?P<threshold>{_ID})=)"
+                rf'(?P<flag>{_ID}\("tengu_bg_low_mem_mb",\d+\))'
+                rf"(?=\*1024\*1024;if\((?P=threshold)<=0\)return\{{lowMem:!1,)"
+            ),
+            replacement=(
+                r"\1(()=>{"
+                f"let _ccLowMemMb=process.env.{BG_LOW_MEM_ENV}?.trim();"
+                "return _ccLowMemMb&&Number.isFinite(Number(_ccLowMemMb))?"
+                r"Number(_ccLowMemMb):\g<flag>})()"
+            ),
+        ),
+    ),
+    verify_present=(re.compile(re.escape(f"process.env.{BG_LOW_MEM_ENV}?.trim()")),),
+    verify_absent=(
+        re.compile(rf'let {_ID}={_ID}\("tengu_bg_low_mem_mb",\d+\)\*1024\*1024;'),
+    ),
+    min_version=(2, 1, 274),
+    requires_version=True,
+)
+
+
 def _select_patch_variant(
     version: Version | None, base: PatchSet, variant: PatchSet
 ) -> PatchSet:
@@ -4707,6 +4744,11 @@ def default_patch_sets(version: Version | None) -> list[PatchSet]:
         *(
             [AUTO_MODE_LOCAL_FALLBACK]
             if AUTO_MODE_LOCAL_FALLBACK.applies_to(version)
+            else []
+        ),
+        *(
+            [BACKGROUND_LOW_MEMORY_THRESHOLD]
+            if BACKGROUND_LOW_MEMORY_THRESHOLD.applies_to(version)
             else []
         ),
     ]

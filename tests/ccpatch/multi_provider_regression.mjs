@@ -197,7 +197,7 @@ assert.deepEqual(
   ["WebFetch", "Read", "mcp__docs__search"],
 );
 
-assert.equal(api.catalog.length, 17);
+assert.equal(api.catalog.length, 18);
 assert.ok(api.catalog.every(({ value }) => !value.startsWith("kimi:")));
 assert.equal(api.catalogInfo("kimi:kimi-k3"), api.catalogInfo("moonshot:kimi-k3"));
 assert.equal(api.catalogInfo("moonshot:kimi-k3").description, "Moonshot general-purpose model");
@@ -214,6 +214,7 @@ for (const [model, label, domain] of [
   ["openai:gpt-6.1-sol", "GPT-6.1 Sol", "openai.com"],
   ["openai:gpt-6-sol", "GPT-6 Sol", "openai.com"],
   ["openai:gpt-6-luna", "GPT-6 Luna", "openai.com"],
+  ["moonshot:kimi-k3.1-pro", "Kimi K3.1 Pro", "moonshot.ai"],
   ["moonshot:kimi-k3", "Kimi K3", "moonshot.ai"],
   ["zai:glm-5.3", "GLM 5.3", "z.ai"],
   ["minimax:MiniMax-M3", "MiniMax M3", "minimax.io"],
@@ -228,6 +229,7 @@ for (const model of ["claude-sonnet-4-6", "future-native-model", "gateway:model"
   );
 }
 const expectedLimits = new Map([
+  ["moonshot:kimi-k3.1-pro", [1048576, 131072]],
   ["moonshot:kimi-k3", [1048576, 131072]],
   ["moonshot:kimi-k2.7-code", [262144, 32768]],
   ["zai:glm-5.3", [1000000, 131072]],
@@ -279,7 +281,7 @@ assert.deepEqual(
     "openai:gpt-6.1-sol",
     "openai:gpt-6-luna",
     "openai:gpt-5.6-terra",
-    "moonshot:kimi-k3",
+    "moonshot:kimi-k3.1-pro",
     "zai:glm-5.3",
     "zai:glm-5.3-flash",
     "minimax:MiniMax-M3",
@@ -289,6 +291,7 @@ for (const hidden of [
   "openai:gpt-6-sol",
   "openai:gpt-5.6-sol",
   "openai:gpt-5.6-luna",
+  "moonshot:kimi-k3",
   "moonshot:kimi-k2.7-code",
   "zai:glm-5.2",
   "zai:glm-5-turbo",
@@ -299,13 +302,13 @@ for (const hidden of [
   assert.equal(api.catalogInfo(hidden)?.hidden, true, hidden);
   assert.equal(api.modelInfo(hidden)?.provider, hidden.split(":")[0], hidden);
 }
-assert.equal(api.catalog.filter(({ hidden }) => hidden === true).length, 9);
+assert.equal(api.catalog.filter(({ hidden }) => hidden === true).length, 10);
 delete credentials.CC_ZAI_AUTH_TOKEN;
 delete credentials.CC_MINIMAX_AUTH_TOKEN;
 delete credentials.CC_OPENAI_PROXY_AUTH_TOKEN;
 assert.deepEqual(
   Array.from(api.pickerCatalog(), ({ value }) => value),
-  ["moonshot:kimi-k3"],
+  ["moonshot:kimi-k3.1-pro"],
 );
 delete credentials.CC_KIMI_AUTH_TOKEN;
 delete credentials.CC_OPENAI_AVAILABLE;

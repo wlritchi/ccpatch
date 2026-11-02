@@ -2579,7 +2579,22 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
         "defaultHeaders": {"User-Agent": "KimiCLI/1.5"},
         "models": (
             {
+                "wireModel": "kimi-k3.1-pro",
+                "label": "Kimi K3.1 Pro",
+                "description": "Moonshot flagship model",
+                "contextWindow": 1_048_576,
+                "maxOutputTokens": 131_072,
+                "costs": {
+                    "inputTokens": 2,
+                    "outputTokens": 10,
+                    "promptCacheWriteTokens": 2,
+                    "promptCacheReadTokens": 0.2,
+                    "webSearchRequests": 0,
+                },
+            },
+            {
                 "wireModel": "kimi-k3",
+                "hidden": True,
                 "label": "Kimi K3",
                 "description": "Moonshot general-purpose model",
                 "contextWindow": 1_048_576,
@@ -2587,10 +2602,6 @@ _MULTI_PROVIDER_CATALOG_SOURCE: tuple[MultiProviderDefinition, ...] = (
                 "costs": {
                     "inputTokens": 3,
                     "outputTokens": 15,
-                    # Accounting assumption: charge cache writes at the ordinary
-                    # input-token rate because Kimi publishes cache-hit/cache-miss
-                    # prices rather than a separate cache-write price.
-                    # Source: https://platform.kimi.ai/docs/pricing/chat-k3.md
                     "promptCacheWriteTokens": 3,
                     "promptCacheReadTokens": 0.3,
                     "webSearchRequests": 0,

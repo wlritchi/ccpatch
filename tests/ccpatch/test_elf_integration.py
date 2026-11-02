@@ -558,6 +558,7 @@ def test_real_source_routes_multi_provider_sdk(
     assert patched.count("let _ccRequest=") >= 2
     assert "_ccMultiProviderCatalog.find" in patched
     for model in (
+        "moonshot:kimi-k3.1-pro",
         "moonshot:kimi-k3",
         "moonshot:kimi-k2.7-code",
         "zai:glm-5.3",

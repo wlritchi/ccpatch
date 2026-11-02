@@ -1123,6 +1123,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
         "openai:gpt-6-sol",
         "openai:gpt-5.6-sol",
         "openai:gpt-5.6-luna",
+        "moonshot:kimi-k3",
         "moonshot:kimi-k2.7-code",
         "zai:glm-5.2",
         "zai:glm-5-turbo",
@@ -1137,7 +1138,7 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
         "openai:gpt-6-astra",
         "openai:gpt-6.1-sol",
         "openai:gpt-5.6-terra",
-        "moonshot:kimi-k3",
+        "moonshot:kimi-k3.1-pro",
         "zai:glm-5.3-flash",
         "minimax:MiniMax-M3",
     ):
@@ -1146,6 +1147,8 @@ def test_multi_provider_sdk_transforms_complete_fixture() -> None:
         assert '"hidden"' not in entry, visible_model
     assert "_ccEntry.hidden!==!0&&_ccMultiProviderAvailable(" in patched
     for priced_model in (
+        '"moonshot:kimi-k3.1-pro":{inputTokens:2,outputTokens:10,promptCacheWriteTokens:2,',
+        '"kimi:kimi-k3.1-pro":{inputTokens:2,outputTokens:10,promptCacheWriteTokens:2,',
         '"moonshot:kimi-k3":{inputTokens:3,outputTokens:15,promptCacheWriteTokens:3,',
         '"moonshot:kimi-k2.7-code":{inputTokens:0.95,outputTokens:4,',
         '"kimi:kimi-k3":{inputTokens:3,outputTokens:15,promptCacheWriteTokens:3,',

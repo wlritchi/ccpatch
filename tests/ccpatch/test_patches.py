@@ -312,6 +312,7 @@ def test_applies_to_version_bounds() -> None:
     [
         'state?.channelsEnabled!==!0;obj.flag("tengu_harbor",!1)',
         'obj.state?.channelsEnabled!==!0;flag("tengu_harbor",!1)',
+        'obj.state.channelsEnabled!==!0;flag("tengu_harbor",!1)',
     ],
 )
 def test_channels_enabled_rejects_member_expressions(source: str) -> None:

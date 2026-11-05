@@ -245,6 +245,21 @@ def test_channels_enabled() -> None:
     assert "tengu_harbor" not in out
 
 
+def test_channels_enabled_clears_api_key_auth_branch() -> None:
+    # 2.1.301 shape: the claude.ai OAuth branch uses `?.`, and the branch
+    # for API-key auth uses `.`.
+    src = (
+        "function xrt(e){if(kt()){let i=Ir();"
+        'return(i==="team"||i==="enterprise")&&e?.channelsEnabled!==!0}'
+        "return e!==null&&e.channelsEnabled!==!0}"
+        'function zH(){return M$("tengu_harbor",!1)}'
+    )
+    out = CHANNELS_ENABLED.apply(src)
+    assert '(i==="team"||i==="enterprise")&&!1}' in out
+    assert "return e!==null&&!1}" in out
+    assert "channelsEnabled" not in out
+
+
 def test_dev_channel_inheritance_threads_natively() -> None:
     out = DEV_CHANNEL_INHERITANCE.apply(_DEV_CHANNEL_SRC)
     # flag forwarded through both respawn allowlists (value + multi-value)

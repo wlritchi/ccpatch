@@ -397,11 +397,17 @@ def thinking_expanded(version: Version | None) -> PatchSet:
 CHANNELS_ENABLED = PatchSet(
     name="channels-enabled",
     patches=(
-        # Force the "channels not enabled" subexpression false -> channels on.
+        # Force the "channels not enabled" subexpressions false -> channels on.
+        # 2.1.301 has two: the claude.ai OAuth branch reads
+        # `e?.channelsEnabled`, and the branch for API-key auth
+        # (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or apiKeyHelper) reads
+        # `e.channelsEnabled`. The second blocks channels on such a session
+        # whenever managed settings exist.
         Patch(
             name="channelator",
-            pattern=re.compile(rf"(?<![\w$.]){_ID}\?\.channelsEnabled!==!0"),
+            pattern=re.compile(rf"(?<![\w$.]){_ID}\??\.channelsEnabled!==!0"),
             replacement="!1",
+            expected_matches=(1, 2),
         ),
         # Force the tengu_harbor feature flag on. In 2.1.301 a second read
         # gates the allow_channels org policy check; that check stays in force.
@@ -413,7 +419,7 @@ CHANNELS_ENABLED = PatchSet(
         ),
     ),
     verify_absent=(
-        re.compile(r"\?\.channelsEnabled!==!0"),
+        re.compile(r"\.channelsEnabled!==!0"),
         re.compile(r'"tengu_harbor",!1'),
     ),
     min_version=_V_2_1_151,

@@ -35,7 +35,7 @@ const CODEX_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]
 const RESPONSE_ITEM_OVERHEAD_TOKENS = 6;
 const IMAGE_OVERHEAD_TOKENS = 2048;
 const ENCRYPTED_REASONING_OVERHEAD_TOKENS = 64;
-const TOKENIZER_CHUNK_CODE_UNITS = 4 * 1024;
+const TOKENIZER_CHUNK_CODE_UNITS = 1024;
 const TOKENIZER_ENCODING_BY_MODEL = Object.freeze({
   // OpenAI maps GPT-5 to o200k_base in tiktoken. Apply that encoding to newer
   // pi GPT-5 and GPT-6 catalog entries as provisional policy until OpenAI
@@ -1603,6 +1603,7 @@ export {
   buildOptions,
   canonicalResponsesPayload,
   countTokensResponse,
+  encodedLength,
   errorType,
   estimateInputTokens,
   extractInboundBearer,
@@ -1619,6 +1620,7 @@ export {
   sessionIdFor,
   streamAnthropicResponse,
   thinkingToReasoning,
+  TOKENIZER_CHUNK_CODE_UNITS,
   usageLimitError,
   wantsStreaming,
   warnUnknownBetas,

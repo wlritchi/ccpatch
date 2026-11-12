@@ -9,10 +9,12 @@ import {
   assertTokenizerMappings,
   canonicalResponsesPayload,
   countTokensResponse,
+  encodedLength,
   estimateInputTokens,
   piContentToAnthropic,
   resolveModelId,
   thinkingToReasoning,
+  TOKENIZER_CHUNK_CODE_UNITS,
   wantsStreaming,
 } from "../bin/cc-openai-proxy.js";
 
@@ -217,11 +219,44 @@ test("uses o200k tokens rather than UTF-8 bytes divided by four", () => {
   }
 });
 
-test("tokenizes large repetitive input without pathological slowdown", () => {
-  const started = performance.now();
-  const estimated = estimateInputTokens(tokenModel, tokenRequest("x".repeat(1024 * 1024)));
-  assert.ok(estimated > 100_000);
-  assert.ok(performance.now() - started < 10_000);
+// BPE cost grows faster than linearly with the length of one unbroken run of
+// text, so a bound on each tokenizer call keeps large repetitive input fast.
+function chunkRecordingTokenizer() {
+  const chunks = [];
+  return {
+    chunks,
+    encode(text) {
+      chunks.push(text);
+      return { length: text.length };
+    },
+  };
+}
+
+test("tokenizes large repetitive input in bounded chunks", () => {
+  const tokenizer = chunkRecordingTokenizer();
+  const text = "x".repeat(1024 * 1024 + 7);
+  assert.equal(encodedLength(tokenizer, text), text.length);
+  assert.ok(tokenizer.chunks.length > 1);
+  for (const chunk of tokenizer.chunks) {
+    assert.ok(chunk.length <= TOKENIZER_CHUNK_CODE_UNITS, `chunk of ${chunk.length}`);
+  }
+  assert.equal(tokenizer.chunks.join(""), text);
+});
+
+test("keeps surrogate pairs together across tokenizer chunks", () => {
+  const tokenizer = chunkRecordingTokenizer();
+  const text = `${"x".repeat(TOKENIZER_CHUNK_CODE_UNITS - 1)}🌍${"x".repeat(10)}`;
+  encodedLength(tokenizer, text);
+  assert.deepEqual(
+    tokenizer.chunks.map((chunk) => chunk.length),
+    [TOKENIZER_CHUNK_CODE_UNITS - 1, 12],
+  );
+  assert.equal(tokenizer.chunks.join(""), text);
+});
+
+test("estimates large repetitive input with the real tokenizer", () => {
+  const estimated = estimateInputTokens(tokenModel, tokenRequest("x".repeat(64 * 1024)));
+  assert.ok(estimated > (64 * 1024) / 16);
 });
 
 test("counts canonical system, history, tool schemas, arguments, results, and IDs", () => {
